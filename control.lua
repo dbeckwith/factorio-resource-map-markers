@@ -9,19 +9,22 @@ local function list_concat(l1, l2)
   end
 end
 
-local function chunk_area_containing(position)
-  local chunk_pos = {
+local function chunk_position_containing(position)
+  return {
     x = math.floor(position.x / 32),
     y = math.floor(position.y / 32),
   }
+end
+
+local function chunk_area(chunk_position)
   return {
     left_top = {
-      x = chunk_pos.x * 32,
-      y = chunk_pos.y * 32,
+      x = chunk_position.x * 32,
+      y = chunk_position.y * 32,
     },
     right_bottom = {
-      x = (chunk_pos.x + 1) * 32,
-      y = (chunk_pos.y + 1) * 32,
+      x = (chunk_position.x + 1) * 32,
+      y = (chunk_position.y + 1) * 32,
     },
   }
 end
@@ -34,11 +37,19 @@ local function bb_center(bb)
 end
 
 local function bb_adjacent(bb1, bb2)
-  local c1 = bb_center(bb1)
-  local c2 = bb_center(bb2)
-  local dx = c1.x - c2.x
-  local dy = c1.y - c2.y
-  return math.sqrt(dx * dx + dy * dy) <= 1
+  local p1_min_x = math.floor(bb1.left_top.x)
+  local p1_max_x = math.ceil(bb1.right_bottom.x)
+  local p1_min_y = math.floor(bb1.left_top.y)
+  local p1_max_y = math.ceil(bb1.right_bottom.y)
+  local p2_min_x = math.floor(bb2.left_top.x)
+  local p2_max_x = math.ceil(bb2.right_bottom.x)
+  local p2_min_y = math.floor(bb2.left_top.y)
+  local p2_max_y = math.ceil(bb2.right_bottom.y)
+  return
+    p1_min_x <= p2_max_x and
+    p1_max_x >= p2_min_x and
+    p1_min_y <= p2_max_y and
+    p1_max_y >= p2_min_y
 end
 
 local function bbs_center(bbs)
@@ -73,19 +84,18 @@ local function mark_resource_entity(force, surface, resource_entity)
   force.add_chart_tag(surface, tag)
 end
 
-local function mark_area(force, surface, area)
-  -- TODO: include resources in surrounding (charted) chunks
+local function mark_chunk(force, surface, chunk_position)
+  log('marking chunk ' .. serpent.block(chunk_position))
 
-  log('marking area ' .. serpent.block(area))
+  -- TODO: search in adjacent chunks as long as a patch is against the edge
 
-  -- find all resources in area
-  resource_entities = surface.find_entities_filtered{
-    area = area,
+  -- collect all patches of the same resource
+  local patches = {}
+  -- find all resources in chunk
+  local resource_entities = surface.find_entities_filtered{
+    area = chunk_area(chunk_position),
     type = 'resource',
   }
-
-  -- collect all patches of the same resource in the area
-  patches = {}
   for _, resource_entity in pairs(resource_entities) do
     -- find the index of all patches the current entity is adjacent to
     local adjacent_patches = {}
@@ -135,15 +145,13 @@ local function mark_area(force, surface, area)
   end
 end
 
-local function on_chunk_charted(event)
-  mark_area(event.force, game.surfaces[event.surface_index], event.area)
-end
+script.on_event(defines.events.on_chunk_charted, function(event)
+  mark_chunk(event.force, game.surfaces[event.surface_index], event.position)
+end)
 
--- script.on_event(defines.events.on_chunk_charted, on_chunk_charted)
-
-commands.add_command('mark-current-area', '', function(event)
+commands.add_command('mark-current-chunk', '', function(event)
   local player = game.players[event.player_index]
   player.print('marking resources in your current chunk')
-  local area = chunk_area_containing(player.position)
-  mark_area(player.force, player.surface, area)
+  local chunk_position = chunk_position_containing(player.position)
+  mark_chunk(player.force, player.surface, chunk_position)
 end)
