@@ -1,3 +1,14 @@
+local function list_concat(l1, l2)
+  if #l1 == 0 then
+    return l2
+  else
+    for _, bb in pairs(l2) do
+      table.insert(l1, bb)
+    end
+    return l1
+  end
+end
+
 local function chunk_area_containing(position)
   local chunk_pos = {
     x = math.floor(position.x / 32),
@@ -96,16 +107,14 @@ local function mark_area(force, surface, area)
     -- from the patches list
     table.sort(adjacent_patches, function(i, j) return i > j end)
 
-    -- remove all adjacent patches and merge them in to one
+    -- remove all adjacent patches and merge them into one
     local merged_patch = {
       prototype = resource_entity.prototype,
       bbs = {},
     }
     for _, patch_idx in pairs(adjacent_patches) do
       local patch = table.remove(patches, patch_idx)
-      for _, bb in pairs(patch.bbs) do
-        table.insert(merged_patch.bbs, bb)
-      end
+      merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
     end
     -- add the new entity
     table.insert(merged_patch.bbs, resource_entity.bounding_box)
