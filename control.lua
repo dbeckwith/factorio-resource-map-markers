@@ -1,9 +1,9 @@
 local math2d = require('math2d')
 local util = require('util')
 
-local function contains(l, e)
+local function chunks_contains(l, e)
   for _, e2 in pairs(l) do
-    if table.compare(e, e2) then
+    if e.x == e2.x and e.y == e2.y then
       return true
     end
   end
@@ -170,15 +170,23 @@ local function clear_tags()
   global['tags'] = {}
 end
 
-local function tag_chunks(force, surface, chunks)
-  local chunks_str = ''
+local function fmt_chunks(chunks)
+  local s = ''
   for _, chunk in pairs(chunks) do
-    if chunks_str ~= '' then
-      chunks_str = chunks_str .. ', '
+    if s ~= '' then
+      s = s .. ', '
     end
-    chunks_str = chunks_str .. '(' .. chunk.x .. ',' .. chunk.y .. ')'
+    s = s .. '(' .. chunk.x .. ',' .. chunk.y .. ')'
   end
-  log('tagging ' .. #chunks .. ' chunks: ' .. chunks_str)
+  return s
+end
+
+local function tag_chunks(force, surface, chunks)
+  log(string.format('tagging %d chunks on %s for %s: %s',
+    #chunks,
+    surface.name,
+    force.name,
+    fmt_chunks(chunks)))
 
   -- TODO: group oil-like resources that are near to each other
   -- might want to do the same for normal resources as well
@@ -187,9 +195,6 @@ local function tag_chunks(force, surface, chunks)
   -- seems to be caused by chunks charting sequentially
   -- need to handle when a chunk next to an existing patch
   -- reveals more of the patch
-
-  -- FIXME: total amounts disagree with builtin hovertext
-  -- mark-here seems correct, mark-all seems to be doubled
 
   -- TODO: distribute work over multiple ticks
   -- could make a work queue of chunks or something that's processed periodically
@@ -219,6 +224,8 @@ local function tag_chunks(force, surface, chunks)
     local chunk = table.remove(chunks_to_search)
 
     log('searching chunk ' .. chunk.x .. ',' .. chunk.y)
+    log('chunks_to_search: ' .. fmt_chunks(chunks_to_search))
+    log('searched_chunks: ' .. fmt_chunks(searched_chunks))
 
     -- if we've searched fewer than N chunks, this is an origin chunk
     local is_origin_chunk = #searched_chunks < #chunks
@@ -281,8 +288,9 @@ local function tag_chunks(force, surface, chunks)
     for neighbor_chunk in cardinal_neighbors(chunk) do
       -- only look at charted chunks that haven't been visited yet
       if force.is_chunk_charted(surface, neighbor_chunk) and
-        not contains(searched_chunks, neighbor_chunk) and
-        not contains(chunks_to_search, neighbor_chunk) then
+        -- TODO: make array-set structure to optimize this
+        not chunks_contains(searched_chunks, neighbor_chunk) and
+        not chunks_contains(chunks_to_search, neighbor_chunk) then
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(patches) do
           if bb_adjacent(chunk_area(neighbor_chunk), patch.bb) then
