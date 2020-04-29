@@ -21,18 +21,6 @@ local function list_concat(l1, l2)
   end
 end
 
-local function remove_if(t, f)
-  local keys = {}
-  for key, el in pairs(t) do
-    if f(el) then
-      table.insert(keys, key)
-    end
-  end
-  for _, key in pairs(keys) do
-    table.remove(t, key)
-  end
-end
-
 local function merge_bbs(bb1, bb2)
   if bb1 == nil then
     return bb2
