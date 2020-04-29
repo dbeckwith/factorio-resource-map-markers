@@ -164,7 +164,7 @@ local function clear_tags()
   end
 
   for _, tag in pairs(global['tags']) do
-    global['tags'][key].destroy()
+    tag.destroy()
   end
 
   global['tags'] = {}
@@ -319,30 +319,35 @@ script.on_configuration_changed(function()
   tag_all()
 end)
 
--- TODO: command help
-
-commands.add_command('mark-resources', '', function(event)
-  local player = game.players[event.player_index]
-  player.print('marking all resources in all surfaces')
-  tag_all()
-end)
-
-commands.add_command('clear-resource-tagers', '', function(event)
-  local player = game.players[event.player_index]
-  player.print('clearing resource tagers')
-  clear_tags()
-end)
-
 script.on_event(defines.events.on_chunk_charted, function(event)
-  -- TODO: what existing tags be cleared?
+  -- TODO: what existing tags need to be cleared?
   local surface = game.surfaces[event.surface_index]
   tag_chunks(event.force, surface, {event.position})
 end)
 
-commands.add_command('mark-resources-in-current-chunk', '', function(event)
-  -- TODO: what existing tags be cleared?
+-- TODO: command help
+-- TODO: command to hide/show markers without regenerating
+
+commands.add_command('resource-map-markers', '', function(event)
   local player = game.players[event.player_index]
-  player.print('marking resources in your current chunk')
-  local chunk_position = chunk_position_containing(player.position)
-  tag_chunks(player.force, player.surface, {chunk_position})
+  local args = util.split_whitespace(event.parameter)
+  if #args == 0 then
+    player.print('a sub-command is required: mark-all, clear-all, or mark-here')
+  elseif args[1] == 'mark-all' then
+    player.print('marking all resources in all surfaces')
+    tag_all()
+  elseif args[1] == 'clear-all' then
+    player.print('clearing resource markers')
+    clear_tags()
+  elseif args[1] == 'mark-here' then
+  -- TODO: what existing tags need to be cleared?
+    player.print('marking resources in your current chunk')
+    local chunk_position = chunk_position_containing(player.position)
+    tag_chunks(player.force, player.surface, {chunk_position})
+  else
+    player.print(string.format(
+      'unrecognized resource-map-markers command %q',
+      args[1]))
+    player.print('valid sub-commands are: mark-all, clear-all, or mark-here')
+  end
 end)
