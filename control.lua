@@ -191,9 +191,10 @@ local function mark_chunk(force, surface, chunk_position)
       -- remove all adjacent patches and merge them into one
       local merged_patch = {
         prototype = resource_entity.prototype,
-        bbs = {},
-        bb = nil,
+        bbs = {resource_entity.bounding_box},
+        bb = resource_entity.bounding_box,
         in_origin_chunk = is_origin_chunk,
+        amount = resource_entity.amount,
       }
       for _, patch_idx in pairs(adjacent_patches) do
         local patch = table.remove(patches, patch_idx)
@@ -202,11 +203,8 @@ local function mark_chunk(force, surface, chunk_position)
         merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
         merged_patch.in_origin_chunk = merged_patch.in_origin_chunk or
           patch.in_origin_chunk
+        merged_patch.amount = merged_patch.amount + patch.amount
       end
-
-      -- add the new entity
-      table.insert(merged_patch.bbs, resource_entity.bounding_box)
-      merged_patch.bb = merge_bbs(merged_patch.bb, resource_entity.bounding_box)
 
       -- record the merged patch
       table.insert(patches, merged_patch)
@@ -234,7 +232,18 @@ local function mark_chunk(force, surface, chunk_position)
   for _, patch in pairs(patches) do
     local tag = {}
     tag.position = bbs_center(patch.bbs)
-    tag.text = string.format('%s', patch.prototype.name)
+    local amount = nil
+    if patch.prototype.infinite_resource then
+      amount = math.floor(patch.amount
+          / #patch.bbs
+          / patch.prototype.normal_resource_amount
+          * 100) .. '%'
+    else
+      amount = util.format_number(patch.amount)
+    end
+    tag.text = string.format('%s - %s',
+      patch.prototype.name,
+      amount)
     tag.icon = get_resource_icon(patch.prototype)
 
     log('adding tag ' .. serpent.block(tag))
