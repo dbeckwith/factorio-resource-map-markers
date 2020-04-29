@@ -140,6 +140,23 @@ local function get_resource_icon(resource_prototype)
   end
 end
 
+local function add_tag(force, surface, tag)
+  log('adding tag ' .. serpent.block(tag))
+
+  if global['tags'] == nil then
+    global['tags'] = {}
+  end
+
+  local key = tag.icon.type .. ':' ..
+    tag.icon.name .. ':' ..
+    math.floor(tag.position.x) .. ':' ..
+    math.floor(tag.position.y)
+  if global['tags'][key] ~= nil then
+    global['tags'][key].destroy()
+  end
+  global['tags'][key] = force.add_chart_tag(surface, tag)
+end
+
 local function mark_chunk(force, surface, chunk_position)
   log('marking chunk ' .. chunk_position.x .. ',' .. chunk_position.y)
 
@@ -246,8 +263,7 @@ local function mark_chunk(force, surface, chunk_position)
       amount)
     tag.icon = get_resource_icon(patch.prototype)
 
-    log('adding tag ' .. serpent.block(tag))
-    force.add_chart_tag(surface, tag)
+    add_tag(force, surface, tag)
   end
 end
 
