@@ -176,6 +176,10 @@ local function tag_chunks(force, surface, chunk_positions)
 
   -- FIXME: on_configuration_changed not marking negative X chunks
 
+  -- FIXME: startup only marks a few things
+
+  -- FIXME: total amounts disagree with builtin hovertext
+
   -- TODO: distribute work over multiple ticks
   -- could make a work queue of chunks or something that's processed periodically
 
