@@ -225,9 +225,6 @@ local function tag_chunks(force, surface, chunks)
     force.name,
     fmt_chunks(chunks)))
 
-  -- TODO: group oil-like resources that are near to each other
-  -- might want to do the same for normal resources as well
-
   -- TODO: distribute work over multiple ticks
   -- could make a work queue of chunks or something that's processed periodically
 
