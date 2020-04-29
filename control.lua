@@ -1,9 +1,10 @@
 local math2d = require('math2d')
 local util = require('util')
 
-local function chunks_contains(l, e)
-  for _, e2 in pairs(l) do
-    if e.x == e2.x and e.y == e2.y then
+local function chunks_contains(chunks, chunk)
+  for _, chunk2 in pairs(chunks) do
+    if chunk.position.x == chunk2.position.x and
+      chunk.position.y == chunk2.position.y then
       return true
     end
   end
@@ -66,12 +67,12 @@ end
 local function chunk_area(chunk)
   return {
     left_top = {
-      x = chunk.x * 32,
-      y = chunk.y * 32,
+      x = chunk.position.x * 32,
+      y = chunk.position.y * 32,
     },
     right_bottom = {
-      x = (chunk.x + 1) * 32,
-      y = (chunk.y + 1) * 32,
+      x = (chunk.position.x + 1) * 32,
+      y = (chunk.position.y + 1) * 32,
     },
   }
 end
@@ -176,9 +177,19 @@ local function hide_tags()
   end
 end
 
-local function show_tags()
+local function show_tags(recreate_invalid)
   for _, patch in pairs(global.patches) do
-    if patch.tag == nil or not patch.tag.valid then
+    local add = false
+    if patch.tag == nil then
+      add = true
+    else
+      if recreate_invalid and not patch.tag.valid then
+        add = true
+      else
+        add = false
+      end
+    end
+    if add then
       local tag = {}
       tag.position = bbs_center(patch.bbs)
       local amount = nil
@@ -213,61 +224,97 @@ local function fmt_chunks(chunks)
     if s ~= '' then
       s = s .. ', '
     end
-    s = s .. '(' .. chunk.x .. ',' .. chunk.y .. ')'
+    s = s .. '(' .. chunk.position.x .. ',' .. chunk.position.y .. ')'
   end
   return s
 end
 
-local function tag_chunks(force, surface, chunks)
-  log(string.format('tagging %d chunks on %s for %s: %s',
+local function tag_chunks(chunks)
+  log(string.format('tagging %d chunks: %s',
     #chunks,
-    surface.name,
-    force.name,
     fmt_chunks(chunks)))
 
-  -- TODO: distribute work over multiple ticks
-  -- could make a work queue of chunks or something that's processed periodically
-
-  -- list of all connected resource entities of the same type
-  local patches = global.patches
-
-  -- list of chunks that have already been looked at
-  local searched_chunks = global.searched_chunks
-
-  -- list of chunks that need to be looked at
-  local chunks_to_search = {}
   -- look at all chunks from input that haven't been searched already
   for _, chunk in pairs(chunks) do
-    if not chunks_contains(searched_chunks, chunk) then
-      table.insert(chunks_to_search, chunk)
+    if not chunks_contains(global.searched_chunks, chunk) then
+      table.insert(global.chunks_to_search, chunk)
     end
   end
+end
 
-  -- search chunks
-  while #chunks_to_search ~= 0 do
-    log('chunks_to_search: ' .. fmt_chunks(chunks_to_search))
-    log('searched_chunks: ' .. fmt_chunks(searched_chunks))
+local function tag_all()
+  clear_tags()
+  local chunks = {}
+  for _, force in pairs(game.forces) do
+    for _, surface in pairs(game.surfaces) do
+      for chunk in surface.get_chunks() do
+        if force.is_chunk_charted(surface, chunk) then
+          table.insert(chunks, {
+            position = chunk,
+            force = force,
+            surface = surface,
+          })
+        end
+      end
+    end
+  end
+  tag_chunks(chunks)
+end
 
-    local chunk = table.remove(chunks_to_search)
+script.on_init(function()
+  -- list of all connected resource entities of the same type
+  global.patches = {}
+  -- list of chunks that have already been looked at
+  global.searched_chunks = {}
+  -- list of chunks that need to be looked at
+  global.chunks_to_search = {}
+end)
 
-    log('searching chunk ' .. chunk.x .. ',' .. chunk.y)
+script.on_configuration_changed(function()
+  tag_all()
+end)
+
+script.on_event(defines.events.on_chunk_charted, function(event)
+  tag_chunks({{
+    position = event.position,
+    force = event.force,
+    surface = game.surfaces[event.surface_index],
+  }})
+end)
+
+local PROCESS_FREQUENCY = 1
+local PROCESS_BATCH = 1
+
+script.on_nth_tick(PROCESS_FREQUENCY, function()
+  local any_new_patches = false
+  local chunks_processed_this_tick = 0
+  while #global.chunks_to_search ~= 0 and
+    chunks_processed_this_tick < PROCESS_BATCH do
+    chunks_processed_this_tick = chunks_processed_this_tick + 1
+
+    log('chunks_to_search: ' .. fmt_chunks(global.chunks_to_search))
+    log('searched_chunks: ' .. fmt_chunks(global.searched_chunks))
+
+    local chunk = table.remove(global.chunks_to_search)
+
+    log('searching chunk ' .. chunk.position.x .. ',' .. chunk.position.y)
 
     -- mark this chunk as searched
-    table.insert(searched_chunks, chunk)
+    table.insert(global.searched_chunks, chunk)
 
     -- find all resources in chunk
-    local resource_entities = surface.find_entities_filtered{
+    local resource_entities = chunk.surface.find_entities_filtered{
       area = chunk_area(chunk),
       type = 'resource',
     }
     for _, resource_entity in pairs(resource_entities) do
       -- find the index of all patches the current entity is adjacent to
       local adjacent_patches = {}
-      for patch_idx, patch in pairs(patches) do
+      for patch_idx, patch in pairs(global.patches) do
         -- only consider patches with the same resource, force, and surface
         if resource_entity.prototype == patch.prototype and
-          force == patch.force and
-          surface == patch.surface then
+          chunk.force == patch.force and
+          chunk.surface == patch.surface then
           -- if the current entity is adjacent to the patch,
           -- record the patch index
           if patch_adjacent(patch, resource_entity.bounding_box, true) then
@@ -288,11 +335,11 @@ local function tag_chunks(force, surface, chunks)
         bbs = {resource_entity.bounding_box},
         bb = resource_entity.bounding_box,
         amount = resource_entity.amount,
-        force = force,
-        surface = surface
+        force = chunk.force,
+        surface = chunk.surface,
       }
       for _, patch_idx in pairs(adjacent_patches) do
-        local patch = table.remove(patches, patch_idx)
+        local patch = table.remove(global.patches, patch_idx)
 
         merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
         merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
@@ -310,22 +357,30 @@ local function tag_chunks(force, surface, chunks)
       end
 
       -- record the merged patch
-      table.insert(patches, merged_patch)
+      table.insert(global.patches, merged_patch)
+      any_new_patches = true
     end
 
     -- find any neighboring chunks that have patches up against them
     -- and make sure they get searched as well
-    for neighbor_chunk in cardinal_neighbors(chunk) do
+    for neighbor_chunk in cardinal_neighbors(chunk.position) do
+      neighbor_chunk = {
+        position = neighbor_chunk,
+        force = chunk.force,
+        surface = chunk.surface,
+      }
       -- only look at charted chunks that haven't been visited yet
-      if force.is_chunk_charted(surface, neighbor_chunk) and
+      if neighbor_chunk.force.is_chunk_charted(
+          neighbor_chunk.surface,
+          neighbor_chunk.position) and
         -- TODO: make array-set structure to optimize this
-        not chunks_contains(searched_chunks, neighbor_chunk) and
-        not chunks_contains(chunks_to_search, neighbor_chunk) then
+        not chunks_contains(global.searched_chunks, neighbor_chunk) and
+        not chunks_contains(global.chunks_to_search, neighbor_chunk) then
         -- see if any patches are adjacent to the neighboring chunk
-        for _, patch in pairs(patches) do
+        for _, patch in pairs(global.patches) do
           if patch_adjacent(patch, chunk_area(neighbor_chunk), false) then
             log('adding neighbor chunk ' .. neighbor_chunk.x .. ',' .. neighbor_chunk.y)
-            table.insert(chunks_to_search, neighbor_chunk)
+            table.insert(global.chunks_to_search, neighbor_chunk)
             break
           end
         end
@@ -333,36 +388,9 @@ local function tag_chunks(force, surface, chunks)
     end
   end
 
-  show_tags()
-end
-
-local function tag_all()
-  clear_tags()
-  for _, force in pairs(game.forces) do
-    for _, surface in pairs(game.surfaces) do
-      local chunks = {}
-      for chunk in surface.get_chunks() do
-        if force.is_chunk_charted(surface, chunk) then
-          table.insert(chunks, chunk)
-        end
-      end
-      tag_chunks(force, surface, chunks)
-    end
+  if any_new_patches then
+    show_tags(false)
   end
-end
-
-script.on_init(function()
-  global.patches = {}
-  global.searched_chunks = {}
-end)
-
-script.on_configuration_changed(function()
-  tag_all()
-end)
-
-script.on_event(defines.events.on_chunk_charted, function(event)
-  local surface = game.surfaces[event.surface_index]
-  tag_chunks(event.force, surface, {event.position})
 end)
 
 -- TODO: command help
@@ -383,11 +411,15 @@ commands.add_command('resource-map-markers', '', function(event)
     hide_tags()
   elseif args[1] == 'show' then
     player.print('showing hidden resource markers')
-    show_tags()
+    show_tags(true)
   elseif args[1] == 'mark-here' then
     player.print('marking resources in your current chunk')
-    local chunk = chunk_containing(player.position)
-    tag_chunks(player.force, player.surface, {chunk})
+    local chunk =
+    tag_chunks({{
+      position = chunk_containing(player.position),
+      force = player.force,
+      surface = player.surface,
+    }})
   else
     player.print(string.format(
       'unrecognized resource-map-markers command %q',
