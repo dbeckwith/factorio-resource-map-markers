@@ -188,7 +188,7 @@ local function show_tags()
             / patch.prototype.normal_resource_amount
             * 100) .. '%'
       else
-        amount = util.format_number(patch.amount)
+        amount = util.format_number(patch.amount, true)
       end
       tag.text = string.format('%s - %s',
         patch.prototype.name,
