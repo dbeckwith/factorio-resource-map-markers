@@ -42,8 +42,8 @@ local function merge_bbs(bb1, bb2)
         y = math.min(bb1.left_top.y, bb2.left_top.y),
       },
       right_bottom = {
-        x = math.max(bb1.left_top.x, bb2.left_top.x),
-        y = math.max(bb1.left_top.y, bb2.left_top.y),
+        x = math.max(bb1.right_bottom.x, bb2.right_bottom.x),
+        y = math.max(bb1.right_bottom.y, bb2.right_bottom.y),
       },
     }
   end
@@ -130,21 +130,8 @@ local function get_resource_icon(resource_prototype)
   end
 end
 
-local function mark_resource_entity(force, surface, resource_entity)
-  log('marking resource at ' .. serpent.block(resource_entity.bounding_box))
-  local tag = {}
-  tag.position = bb_center(resource_entity.bounding_box)
-  tag.text = resource_entity.prototype.name
-  tag.icon = get_resource_icon(resource_entity)
-  log('adding tag ' .. serpent.block(tag))
-  force.add_chart_tag(surface, tag)
-end
-
 local function mark_chunk(force, surface, chunk_position)
-  -- FIXME: close to working, position of tag is a bit off
-  -- position is different for same patch depending on starting chunk
-
-  log('marking chunk ' .. serpent.block(chunk_position))
+  log('marking chunk ' .. chunk_position.x .. ',' .. chunk_position.y)
 
   -- collect all patches of the same resource
   local patches = {}
@@ -155,7 +142,7 @@ local function mark_chunk(force, surface, chunk_position)
   while #chunks_to_search ~= 0 do
     local chunk_position = table.remove(chunks_to_search)
 
-    log('searching chunk ' .. serpent.block(chunk_position))
+    log('searching chunk ' .. chunk_position.x .. ',' .. chunk_position.y)
 
     -- this is the origin chunk if we haven't searched anything yet
     local is_origin_chunk = #searched_chunks == 0
