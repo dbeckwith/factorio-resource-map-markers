@@ -140,34 +140,16 @@ local function get_resource_icon(resource_prototype)
   end
 end
 
-local function add_tag(force, surface, tag)
-  log('adding tag ' .. serpent.block(tag))
-
-  if global['tags'] == nil then
-    global['tags'] = {}
-  end
-
-  local key = tag.icon.type .. ':' ..
-    tag.icon.name .. ':' ..
-    math.floor(tag.position.x) .. ':' ..
-    math.floor(tag.position.y)
-  if global['tags'][key] ~= nil then
-    global['tags'][key].destroy()
-  end
-
-  global['tags'][key] = force.add_chart_tag(surface, tag)
-end
-
 local function clear_tags()
-  if global['tags'] == nil then
-    global['tags'] = {}
+  if global.patches ~= nil then
+    for _, patch in pairs(global.patches) do
+      if patch.tag ~= nil then
+        patch.tag.destroy()
+      end
+    end
+    global.patches = {}
+    global.searched_chunks = {}
   end
-
-  for _, tag in pairs(global['tags']) do
-    tag.destroy()
-  end
-
-  global['tags'] = {}
 end
 
 local function fmt_chunks(chunks)
@@ -191,16 +173,14 @@ local function tag_chunks(force, surface, chunks)
   -- TODO: group oil-like resources that are near to each other
   -- might want to do the same for normal resources as well
 
-  -- FIXME: startup only marks a few things
-  -- seems to be caused by chunks charting sequentially
-  -- need to handle when a chunk next to an existing patch
-  -- reveals more of the patch
-
   -- TODO: distribute work over multiple ticks
   -- could make a work queue of chunks or something that's processed periodically
 
-  -- collect all patches of the same resource
-  local patches = {}
+  -- list of all connected resource entities of the same type
+  if global.patches == nil then
+    global.patches = {}
+  end
+  local patches = global.patches
 
   local function patch_adjacent(patch, bb)
     -- quick check: the bb must at least be adjacent to
@@ -217,18 +197,29 @@ local function tag_chunks(force, surface, chunks)
     return false
   end
 
-  -- search through chunks
-  local chunks_to_search = table.deepcopy(chunks)
-  local searched_chunks = {}
-  while #chunks_to_search ~= 0 do
-    local chunk = table.remove(chunks_to_search)
+  -- list of chunks that have already been looked at
+  if global.searched_chunks == nil then
+    global.searched_chunks = {}
+  end
+  local searched_chunks = global.searched_chunks
 
-    log('searching chunk ' .. chunk.x .. ',' .. chunk.y)
+  -- list of chunks that need to be looked at
+  local chunks_to_search = {}
+  -- look at all chunks from input that haven't been searched already
+  for _, chunk in pairs(chunks) do
+    if not chunks_contains(searched_chunks, chunk) then
+      table.insert(chunks_to_search, chunk)
+    end
+  end
+
+  -- search chunks
+  while #chunks_to_search ~= 0 do
     log('chunks_to_search: ' .. fmt_chunks(chunks_to_search))
     log('searched_chunks: ' .. fmt_chunks(searched_chunks))
 
-    -- if we've searched fewer than N chunks, this is an origin chunk
-    local is_origin_chunk = #searched_chunks < #chunks
+    local chunk = table.remove(chunks_to_search)
+
+    log('searching chunk ' .. chunk.x .. ',' .. chunk.y)
 
     -- mark this chunk as searched
     table.insert(searched_chunks, chunk)
@@ -263,7 +254,6 @@ local function tag_chunks(force, surface, chunks)
         prototype = resource_entity.prototype,
         bbs = {resource_entity.bounding_box},
         bb = resource_entity.bounding_box,
-        in_origin_chunk = is_origin_chunk,
         amount = resource_entity.amount,
       }
       for _, patch_idx in pairs(adjacent_patches) do
@@ -271,17 +261,19 @@ local function tag_chunks(force, surface, chunks)
 
         merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
         merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
-        merged_patch.in_origin_chunk = merged_patch.in_origin_chunk or
-          patch.in_origin_chunk
         merged_patch.amount = merged_patch.amount + patch.amount
+
+        -- clear the tag of the existing patch if it had one
+        -- one will be created for the merged patch later
+        if patch.tag ~= nil then
+          patch.tag.destroy()
+          patch.tag = nil
+        end
       end
 
       -- record the merged patch
       table.insert(patches, merged_patch)
     end
-
-    -- remove any patches that aren't in the origin chunk
-    remove_if(patches, function(patch) return not patch.in_origin_chunk end)
 
     -- find any neighboring chunks that have patches up against them
     -- and make sure they get searched as well
@@ -294,6 +286,7 @@ local function tag_chunks(force, surface, chunks)
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(patches) do
           if bb_adjacent(chunk_area(neighbor_chunk), patch.bb) then
+            log('adding neighbor chunk ' .. neighbor_chunk.x .. ',' .. neighbor_chunk.y)
             table.insert(chunks_to_search, neighbor_chunk)
             break
           end
@@ -304,23 +297,26 @@ local function tag_chunks(force, surface, chunks)
 
   -- tag each patch
   for _, patch in pairs(patches) do
-    local tag = {}
-    tag.position = bbs_center(patch.bbs)
-    local amount = nil
-    if patch.prototype.infinite_resource then
-      amount = math.floor(patch.amount
-          / #patch.bbs
-          / patch.prototype.normal_resource_amount
-          * 100) .. '%'
-    else
-      amount = util.format_number(patch.amount)
-    end
-    tag.text = string.format('%s - %s',
-      patch.prototype.name,
-      amount)
-    tag.icon = get_resource_icon(patch.prototype)
+    if patch.tag == nil then
+      local tag = {}
+      tag.position = bbs_center(patch.bbs)
+      local amount = nil
+      if patch.prototype.infinite_resource then
+        amount = math.floor(patch.amount
+            / #patch.bbs
+            / patch.prototype.normal_resource_amount
+            * 100) .. '%'
+      else
+        amount = util.format_number(patch.amount)
+      end
+      tag.text = string.format('%s - %s',
+        patch.prototype.name,
+        amount)
+      tag.icon = get_resource_icon(patch.prototype)
 
-    add_tag(force, surface, tag)
+      log('adding tag ' .. serpent.block(tag))
+      patch.tag = force.add_chart_tag(surface, tag)
+    end
   end
 end
 
