@@ -68,22 +68,22 @@ local function cardinal_neighbors(p)
   end
 end
 
-local function chunk_position_containing(position)
+local function chunk_containing(position)
   return {
     x = math.floor(position.x / 32),
     y = math.floor(position.y / 32),
   }
 end
 
-local function chunk_area(chunk_position)
+local function chunk_area(chunk)
   return {
     left_top = {
-      x = chunk_position.x * 32,
-      y = chunk_position.y * 32,
+      x = chunk.x * 32,
+      y = chunk.y * 32,
     },
     right_bottom = {
-      x = (chunk_position.x + 1) * 32,
-      y = (chunk_position.y + 1) * 32,
+      x = (chunk.x + 1) * 32,
+      y = (chunk.y + 1) * 32,
     },
   }
 end
@@ -170,7 +170,7 @@ local function clear_tags()
   global['tags'] = {}
 end
 
-local function tag_chunks(force, surface, chunk_positions)
+local function tag_chunks(force, surface, chunks)
   -- TODO: group oil-like resources that are near to each other
   -- might want to do the same for normal resources as well
 
@@ -202,22 +202,22 @@ local function tag_chunks(force, surface, chunk_positions)
   end
 
   -- search through chunks
-  local chunks_to_search = chunk_positions
+  local chunks_to_search = chunks
   local searched_chunks = {}
   while #chunks_to_search ~= 0 do
-    local chunk_position = table.remove(chunks_to_search)
+    local chunk = table.remove(chunks_to_search)
 
-    log('searching chunk ' .. chunk_position.x .. ',' .. chunk_position.y)
+    log('searching chunk ' .. chunk.x .. ',' .. chunk.y)
 
     -- if we've searched fewer than N chunks, this is an origin chunk
-    local is_origin_chunk = #searched_chunks < #chunk_positions
+    local is_origin_chunk = #searched_chunks < #chunks
 
     -- mark this chunk as searched
-    table.insert(searched_chunks, chunk_position)
+    table.insert(searched_chunks, chunk)
 
     -- find all resources in chunk
     local resource_entities = surface.find_entities_filtered{
-      area = chunk_area(chunk_position),
+      area = chunk_area(chunk),
       type = 'resource',
     }
     for _, resource_entity in pairs(resource_entities) do
@@ -267,14 +267,14 @@ local function tag_chunks(force, surface, chunk_positions)
 
     -- find any neighboring chunks that have patches up against them
     -- and make sure they get searched as well
-    for neighbor_chunk_position in cardinal_neighbors(chunk_position) do
+    for neighbor_chunk in cardinal_neighbors(chunk) do
       -- only look at charted chunks that haven't been visited yet
-      if force.is_chunk_charted(surface, neighbor_chunk_position) and
-        not contains(searched_chunks, neighbor_chunk_position) then
+      if force.is_chunk_charted(surface, neighbor_chunk) and
+        not contains(searched_chunks, neighbor_chunk) then
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(patches) do
-          if bb_adjacent(chunk_area(neighbor_chunk_position), patch.bb) then
-            table.insert(chunks_to_search, neighbor_chunk_position)
+          if bb_adjacent(chunk_area(neighbor_chunk), patch.bb) then
+            table.insert(chunks_to_search, neighbor_chunk)
             break
           end
         end
@@ -346,8 +346,8 @@ commands.add_command('resource-map-markers', '', function(event)
   elseif args[1] == 'mark-here' then
   -- TODO: what existing tags need to be cleared?
     player.print('marking resources in your current chunk')
-    local chunk_position = chunk_position_containing(player.position)
-    tag_chunks(player.force, player.surface, {chunk_position})
+    local chunk = chunk_containing(player.position)
+    tag_chunks(player.force, player.surface, {chunk})
   else
     player.print(string.format(
       'unrecognized resource-map-markers command %q',
