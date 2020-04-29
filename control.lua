@@ -202,7 +202,7 @@ local function tag_chunks(force, surface, chunks)
   end
 
   -- search through chunks
-  local chunks_to_search = chunks
+  local chunks_to_search = table.deepcopy(chunks)
   local searched_chunks = {}
   while #chunks_to_search ~= 0 do
     local chunk = table.remove(chunks_to_search)
