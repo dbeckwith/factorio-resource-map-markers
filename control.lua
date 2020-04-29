@@ -340,7 +340,6 @@ script.on_configuration_changed(function()
 end)
 
 script.on_event(defines.events.on_chunk_charted, function(event)
-  -- TODO: what existing tags need to be cleared?
   local surface = game.surfaces[event.surface_index]
   tag_chunks(event.force, surface, {event.position})
 end)
@@ -360,7 +359,6 @@ commands.add_command('resource-map-markers', '', function(event)
     player.print('clearing resource markers')
     clear_tags()
   elseif args[1] == 'mark-here' then
-  -- TODO: what existing tags need to be cleared?
     player.print('marking resources in your current chunk')
     local chunk = chunk_containing(player.position)
     tag_chunks(player.force, player.surface, {chunk})
