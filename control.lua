@@ -140,13 +140,49 @@ local function get_resource_icon(resource_prototype)
   end
 end
 
-local function clear_tags()
+-- TODO: use on_init to setup globals so don't need to check for nil everywhere
+
+local function hide_tags()
   if global.patches ~= nil then
     for _, patch in pairs(global.patches) do
       if patch.tag ~= nil then
         patch.tag.destroy()
+        patch.tag = nil
       end
     end
+  end
+end
+
+local function show_tags()
+  if global.patches ~= nil then
+    for _, patch in pairs(global.patches) do
+      if patch.tag == nil or not patch.tag.valid then
+        local tag = {}
+        tag.position = bbs_center(patch.bbs)
+        local amount = nil
+        if patch.prototype.infinite_resource then
+          amount = math.floor(patch.amount
+              / #patch.bbs
+              / patch.prototype.normal_resource_amount
+              * 100) .. '%'
+        else
+          amount = util.format_number(patch.amount)
+        end
+        tag.text = string.format('%s - %s',
+          patch.prototype.name,
+          amount)
+        tag.icon = get_resource_icon(patch.prototype)
+
+        log('adding tag ' .. serpent.block(tag))
+        patch.tag = patch.force.add_chart_tag(patch.surface, tag)
+      end
+    end
+  end
+end
+
+local function clear_tags()
+  if global.patches ~= nil then
+    hide_tags()
     global.patches = {}
     global.searched_chunks = {}
   end
@@ -233,8 +269,10 @@ local function tag_chunks(force, surface, chunks)
       -- find the index of all patches the current entity is adjacent to
       local adjacent_patches = {}
       for patch_idx, patch in pairs(patches) do
-        -- only consider patches with the same resource
-        if resource_entity.prototype == patch.prototype then
+        -- only consider patches with the same resource, force, and surface
+        if resource_entity.prototype == patch.prototype and
+          force == patch.force and
+          surface == patch.surface then
           -- if the current entity is adjacent to the patch,
           -- record the patch index
           if patch_adjacent(patch, resource_entity.bounding_box) then
@@ -255,6 +293,8 @@ local function tag_chunks(force, surface, chunks)
         bbs = {resource_entity.bounding_box},
         bb = resource_entity.bounding_box,
         amount = resource_entity.amount,
+        force = force,
+        surface = surface
       }
       for _, patch_idx in pairs(adjacent_patches) do
         local patch = table.remove(patches, patch_idx)
@@ -262,6 +302,9 @@ local function tag_chunks(force, surface, chunks)
         merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
         merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
         merged_patch.amount = merged_patch.amount + patch.amount
+
+        -- don't need to bother with prototype, force, and surface,
+        -- they will be the same
 
         -- clear the tag of the existing patch if it had one
         -- one will be created for the merged patch later
@@ -295,29 +338,7 @@ local function tag_chunks(force, surface, chunks)
     end
   end
 
-  -- tag each patch
-  for _, patch in pairs(patches) do
-    if patch.tag == nil then
-      local tag = {}
-      tag.position = bbs_center(patch.bbs)
-      local amount = nil
-      if patch.prototype.infinite_resource then
-        amount = math.floor(patch.amount
-            / #patch.bbs
-            / patch.prototype.normal_resource_amount
-            * 100) .. '%'
-      else
-        amount = util.format_number(patch.amount)
-      end
-      tag.text = string.format('%s - %s',
-        patch.prototype.name,
-        amount)
-      tag.icon = get_resource_icon(patch.prototype)
-
-      log('adding tag ' .. serpent.block(tag))
-      patch.tag = force.add_chart_tag(surface, tag)
-    end
-  end
+  show_tags()
 end
 
 local function tag_all()
@@ -351,13 +372,19 @@ commands.add_command('resource-map-markers', '', function(event)
   local player = game.players[event.player_index]
   local args = util.split_whitespace(event.parameter)
   if #args == 0 then
-    player.print('a sub-command is required: mark-all, clear-all, or mark-here')
+    player.print('a sub-command is required: mark-all, clear-all, hide, show, or mark-here')
   elseif args[1] == 'mark-all' then
     player.print('marking all resources in all surfaces')
     tag_all()
   elseif args[1] == 'clear-all' then
     player.print('clearing resource markers')
     clear_tags()
+  elseif args[1] == 'hide' then
+    player.print('hiding resource markers')
+    hide_tags()
+  elseif args[1] == 'show' then
+    player.print('showing hidden resource markers')
+    show_tags()
   elseif args[1] == 'mark-here' then
     player.print('marking resources in your current chunk')
     local chunk = chunk_containing(player.position)
@@ -366,6 +393,6 @@ commands.add_command('resource-map-markers', '', function(event)
     player.print(string.format(
       'unrecognized resource-map-markers command %q',
       args[1]))
-    player.print('valid sub-commands are: mark-all, clear-all, or mark-here')
+    player.print('valid sub-commands are: mark-all, clear-all, hide, show, or mark-here')
   end
 end)
