@@ -366,7 +366,6 @@ script.on_event(defines.events.on_chunk_charted, function(event)
 end)
 
 -- TODO: command help
--- TODO: command to hide/show markers without regenerating
 
 commands.add_command('resource-map-markers', '', function(event)
   local player = game.players[event.player_index]
@@ -396,3 +395,8 @@ commands.add_command('resource-map-markers', '', function(event)
     player.print('valid sub-commands are: mark-all, clear-all, hide, show, or mark-here')
   end
 end)
+
+-- TODO: mod settings
+-- hide resource name
+-- hide patch amount
+-- configure chunks processed per tick?
