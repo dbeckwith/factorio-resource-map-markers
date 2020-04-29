@@ -1,7 +1,7 @@
 local math2d = require('math2d')
 local util = require('util')
 
-local function list_contains(l, e)
+local function contains(l, e)
   for _, e2 in pairs(l) do
     if table.compare(e, e2) then
       return true
@@ -154,25 +154,59 @@ local function add_tag(force, surface, tag)
   if global['tags'][key] ~= nil then
     global['tags'][key].destroy()
   end
+
   global['tags'][key] = force.add_chart_tag(surface, tag)
 end
 
-local function mark_chunk(force, surface, chunk_position)
-  log('marking chunk ' .. chunk_position.x .. ',' .. chunk_position.y)
+local function clear_tags()
+  if global['tags'] == nil then
+    global['tags'] = {}
+  end
+
+  for _, tag in pairs(global['tags']) do
+    global['tags'][key].destroy()
+  end
+
+  global['tags'] = {}
+end
+
+local function tag_chunks(force, surface, chunk_positions)
+  -- TODO: group oil-like resources that are near to each other
+  -- might want to do the same for normal resources as well
+
+  -- FIXME: on_configuration_changed not marking negative X chunks
+
+  -- TODO: distribute work over multiple ticks
+  -- could make a work queue of chunks or something that's processed periodically
 
   -- collect all patches of the same resource
   local patches = {}
 
+  local function patch_adjacent(patch, bb)
+    -- quick check: the bb must at least be adjacent to
+    -- the patch's surrounding bb
+    if not bb_adjacent(bb, patch.bb) then
+      return false
+    end
+    -- slow check: the bb must be adjacent to any of the bbs in the patch
+    for _, patch_bb in pairs(patch.bbs) do
+      if bb_adjacent(bb, patch_bb) then
+        return true
+      end
+    end
+    return false
+  end
+
   -- search through chunks
-  local chunks_to_search = {chunk_position}
+  local chunks_to_search = chunk_positions
   local searched_chunks = {}
   while #chunks_to_search ~= 0 do
     local chunk_position = table.remove(chunks_to_search)
 
     log('searching chunk ' .. chunk_position.x .. ',' .. chunk_position.y)
 
-    -- this is the origin chunk if we haven't searched anything yet
-    local is_origin_chunk = #searched_chunks == 0
+    -- if we've searched fewer than N chunks, this is an origin chunk
+    local is_origin_chunk = #searched_chunks < #chunk_positions
 
     -- mark this chunk as searched
     table.insert(searched_chunks, chunk_position)
@@ -188,13 +222,10 @@ local function mark_chunk(force, surface, chunk_position)
       for patch_idx, patch in pairs(patches) do
         -- only consider patches with the same resource
         if resource_entity.prototype == patch.prototype then
-          -- if the current entity is adjacent to any of the bounding boxes in
-          -- the patch, record the patch index
-          for _, patch_bb in pairs(patch.bbs) do
-            if bb_adjacent(resource_entity.bounding_box, patch_bb) then
-              table.insert(adjacent_patches, patch_idx)
-              break
-            end
+          -- if the current entity is adjacent to the patch,
+          -- record the patch index
+          if patch_adjacent(patch, resource_entity.bounding_box) then
+            table.insert(adjacent_patches, patch_idx)
           end
         end
       end
@@ -233,7 +264,9 @@ local function mark_chunk(force, surface, chunk_position)
     -- find any neighboring chunks that have patches up against them
     -- and make sure they get searched as well
     for neighbor_chunk_position in cardinal_neighbors(chunk_position) do
-      if not list_contains(searched_chunks, neighbor_chunk_position) then
+      -- only look at charted chunks that haven't been visited yet
+      if force.is_chunk_charted(surface, neighbor_chunk_position) and
+        not contains(searched_chunks, neighbor_chunk_position) then
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(patches) do
           if bb_adjacent(chunk_area(neighbor_chunk_position), patch.bb) then
@@ -245,7 +278,7 @@ local function mark_chunk(force, surface, chunk_position)
     end
   end
 
-  -- mark each patch
+  -- tag each patch
   for _, patch in pairs(patches) do
     local tag = {}
     tag.position = bbs_center(patch.bbs)
@@ -267,13 +300,49 @@ local function mark_chunk(force, surface, chunk_position)
   end
 end
 
--- script.on_event(defines.events.on_chunk_charted, function(event)
---   mark_chunk(event.force, game.surfaces[event.surface_index], event.position)
--- end)
+local function tag_all()
+  clear_tags()
+  for _, force in pairs(game.forces) do
+    for _, surface in pairs(game.surfaces) do
+      local chunks = {}
+      for chunk in surface.get_chunks() do
+        if force.is_chunk_charted(surface, chunk) then
+          table.insert(chunks, chunk)
+        end
+      end
+      tag_chunks(force, surface, chunks)
+    end
+  end
+end
 
-commands.add_command('mark-current-chunk', '', function(event)
+script.on_configuration_changed(function()
+  tag_all()
+end)
+
+-- TODO: command help
+
+commands.add_command('mark-resources', '', function(event)
+  local player = game.players[event.player_index]
+  player.print('marking all resources in all surfaces')
+  tag_all()
+end)
+
+commands.add_command('clear-resource-tagers', '', function(event)
+  local player = game.players[event.player_index]
+  player.print('clearing resource tagers')
+  clear_tags()
+end)
+
+script.on_event(defines.events.on_chunk_charted, function(event)
+  -- TODO: what existing tags be cleared?
+  local surface = game.surfaces[event.surface_index]
+  tag_chunks(event.force, surface, {event.position})
+end)
+
+commands.add_command('mark-resources-in-current-chunk', '', function(event)
+  -- TODO: what existing tags be cleared?
   local player = game.players[event.player_index]
   player.print('marking resources in your current chunk')
   local chunk_position = chunk_position_containing(player.position)
-  mark_chunk(player.force, player.surface, chunk_position)
+  tag_chunks(player.force, player.surface, {chunk_position})
 end)
