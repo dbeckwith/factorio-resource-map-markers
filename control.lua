@@ -118,6 +118,21 @@ local function bbs_center(bbs)
     return center
 end
 
+local function patch_adjacent(patch, bb)
+  -- quick check: the bb must at least be adjacent to
+  -- the patch's surrounding bb
+  if not bb_adjacent(bb, patch.bb) then
+    return false
+  end
+  -- slow check: the bb must be adjacent to any of the bbs in the patch
+  for _, patch_bb in pairs(patch.bbs) do
+    if bb_adjacent(bb, patch_bb) then
+      return true
+    end
+  end
+  return false
+end
+
 local function get_resource_icon(resource_prototype)
   -- TODO: select best product for icon
   for _, product in pairs(resource_prototype.mineable_properties.products) do
@@ -128,52 +143,44 @@ local function get_resource_icon(resource_prototype)
   end
 end
 
--- TODO: use on_init to setup globals so don't need to check for nil everywhere
-
 local function hide_tags()
-  if global.patches ~= nil then
-    for _, patch in pairs(global.patches) do
-      if patch.tag ~= nil then
-        patch.tag.destroy()
-        patch.tag = nil
-      end
+  for _, patch in pairs(global.patches) do
+    if patch.tag ~= nil then
+      patch.tag.destroy()
+      patch.tag = nil
     end
   end
 end
 
 local function show_tags()
-  if global.patches ~= nil then
-    for _, patch in pairs(global.patches) do
-      if patch.tag == nil or not patch.tag.valid then
-        local tag = {}
-        tag.position = bbs_center(patch.bbs)
-        local amount = nil
-        if patch.prototype.infinite_resource then
-          amount = math.floor(patch.amount
-              / #patch.bbs
-              / patch.prototype.normal_resource_amount
-              * 100) .. '%'
-        else
-          amount = util.format_number(patch.amount)
-        end
-        tag.text = string.format('%s - %s',
-          patch.prototype.name,
-          amount)
-        tag.icon = get_resource_icon(patch.prototype)
-
-        log('adding tag ' .. serpent.block(tag))
-        patch.tag = patch.force.add_chart_tag(patch.surface, tag)
+  for _, patch in pairs(global.patches) do
+    if patch.tag == nil or not patch.tag.valid then
+      local tag = {}
+      tag.position = bbs_center(patch.bbs)
+      local amount = nil
+      if patch.prototype.infinite_resource then
+        amount = math.floor(patch.amount
+            / #patch.bbs
+            / patch.prototype.normal_resource_amount
+            * 100) .. '%'
+      else
+        amount = util.format_number(patch.amount)
       end
+      tag.text = string.format('%s - %s',
+        patch.prototype.name,
+        amount)
+      tag.icon = get_resource_icon(patch.prototype)
+
+      log('adding tag ' .. serpent.block(tag))
+      patch.tag = patch.force.add_chart_tag(patch.surface, tag)
     end
   end
 end
 
 local function clear_tags()
-  if global.patches ~= nil then
-    hide_tags()
-    global.patches = {}
-    global.searched_chunks = {}
-  end
+  hide_tags()
+  global.patches = {}
+  global.searched_chunks = {}
 end
 
 local function fmt_chunks(chunks)
@@ -201,30 +208,9 @@ local function tag_chunks(force, surface, chunks)
   -- could make a work queue of chunks or something that's processed periodically
 
   -- list of all connected resource entities of the same type
-  if global.patches == nil then
-    global.patches = {}
-  end
   local patches = global.patches
 
-  local function patch_adjacent(patch, bb)
-    -- quick check: the bb must at least be adjacent to
-    -- the patch's surrounding bb
-    if not bb_adjacent(bb, patch.bb) then
-      return false
-    end
-    -- slow check: the bb must be adjacent to any of the bbs in the patch
-    for _, patch_bb in pairs(patch.bbs) do
-      if bb_adjacent(bb, patch_bb) then
-        return true
-      end
-    end
-    return false
-  end
-
   -- list of chunks that have already been looked at
-  if global.searched_chunks == nil then
-    global.searched_chunks = {}
-  end
   local searched_chunks = global.searched_chunks
 
   -- list of chunks that need to be looked at
@@ -343,6 +329,11 @@ local function tag_all()
     end
   end
 end
+
+script.on_init(function()
+  global.patches = {}
+  global.searched_chunks = {}
+end)
 
 script.on_configuration_changed(function()
   tag_all()
