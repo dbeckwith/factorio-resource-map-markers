@@ -96,14 +96,17 @@ local function bb_quantize(bb)
   }
 end
 
-local function bb_adjacent(bb1, bb2)
-  bb1 = bb_quantize(bb1)
-  bb2 = bb_quantize(bb2)
-  return
-    bb1.left_top.x <= bb2.right_bottom.x and
-    bb1.right_bottom.x >= bb2.left_top.x and
-    bb1.left_top.y <= bb2.right_bottom.y and
-    bb1.right_bottom.y >= bb2.left_top.y
+local function bb_expand(bb, r)
+  return {
+    left_top = {
+      x = bb.left_top.x - r,
+      y = bb.left_top.y - r,
+    },
+    right_bottom = {
+      x = bb.right_bottom.x + r,
+      y = bb.right_bottom.y + r,
+    },
+  }
 end
 
 local function bbs_center(bbs)
@@ -118,19 +121,40 @@ local function bbs_center(bbs)
     return center
 end
 
-local function patch_adjacent(patch, bb)
+local function patch_adjacent(patch, bb, exact)
+  -- TODO: use patch.prototype.resource_patch_search_radius once implemented
+  -- https://forums.factorio.com/viewtopic.php?f=28&t=84405
+  -- in vanilla is 3 for normal resources, 12 for oil
+  local r = 3
+
+  bb = bb_quantize(bb)
+
+  local function adjacent(bb1, bb2)
+    bb2 = bb_expand(bb_quantize(bb2), r)
+    return
+      bb1.left_top.x <= bb2.right_bottom.x and
+      bb1.right_bottom.x >= bb2.left_top.x and
+      bb1.left_top.y <= bb2.right_bottom.y and
+      bb1.right_bottom.y >= bb2.left_top.y
+  end
+
   -- quick check: the bb must at least be adjacent to
   -- the patch's surrounding bb
-  if not bb_adjacent(bb, patch.bb) then
+  if not adjacent(bb, patch.bb) then
     return false
   end
-  -- slow check: the bb must be adjacent to any of the bbs in the patch
-  for _, patch_bb in pairs(patch.bbs) do
-    if bb_adjacent(bb, patch_bb) then
-      return true
+
+  if exact then
+    -- slow check: the bb must be adjacent to any of the bbs in the patch
+    for _, patch_bb in pairs(patch.bbs) do
+      if adjacent(bb, patch_bb) then
+        return true
+      end
     end
+    return false
+  else
+    return true
   end
-  return false
 end
 
 local function get_resource_icon(resource_prototype)
@@ -249,7 +273,7 @@ local function tag_chunks(force, surface, chunks)
           surface == patch.surface then
           -- if the current entity is adjacent to the patch,
           -- record the patch index
-          if patch_adjacent(patch, resource_entity.bounding_box) then
+          if patch_adjacent(patch, resource_entity.bounding_box, true) then
             table.insert(adjacent_patches, patch_idx)
           end
         end
@@ -302,7 +326,7 @@ local function tag_chunks(force, surface, chunks)
         not chunks_contains(chunks_to_search, neighbor_chunk) then
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(patches) do
-          if bb_adjacent(chunk_area(neighbor_chunk), patch.bb) then
+          if patch_adjacent(patch, chunk_area(neighbor_chunk), false) then
             log('adding neighbor chunk ' .. neighbor_chunk.x .. ',' .. neighbor_chunk.y)
             table.insert(chunks_to_search, neighbor_chunk)
             break
