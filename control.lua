@@ -1,6 +1,9 @@
-local function position_list_contains(l, p)
-  for _, p2 in pairs(l) do
-    if p.x == p2.x and p.y == p2.y then
+local math2d = require('math2d')
+local util = require('util')
+
+local function list_contains(l, e)
+  for _, e2 in pairs(l) do
+    if table.compare(e, e2) then
       return true
     end
   end
@@ -92,26 +95,33 @@ local function bb_center(bb)
   }
 end
 
+local function bb_quantize(bb)
+  return {
+    left_top = {
+      x = math.floor(bb.left_top.x),
+      y = math.floor(bb.left_top.y),
+    },
+    right_bottom = {
+      x = math.ceil(bb.right_bottom.x),
+      y = math.ceil(bb.right_bottom.y),
+    },
+  }
+end
+
 local function bb_adjacent(bb1, bb2)
-  local p1_min_x = math.floor(bb1.left_top.x)
-  local p1_min_y = math.floor(bb1.left_top.y)
-  local p1_max_x = math.ceil(bb1.right_bottom.x)
-  local p1_max_y = math.ceil(bb1.right_bottom.y)
-  local p2_min_x = math.floor(bb2.left_top.x)
-  local p2_min_y = math.floor(bb2.left_top.y)
-  local p2_max_x = math.ceil(bb2.right_bottom.x)
-  local p2_max_y = math.ceil(bb2.right_bottom.y)
+  bb1 = bb_quantize(bb1)
+  bb2 = bb_quantize(bb2)
   return
-    p1_min_x <= p2_max_x and
-    p1_max_x >= p2_min_x and
-    p1_min_y <= p2_max_y and
-    p1_max_y >= p2_min_y
+    bb1.left_top.x <= bb2.right_bottom.x and
+    bb1.right_bottom.x >= bb2.left_top.x and
+    bb1.left_top.y <= bb2.right_bottom.y and
+    bb1.right_bottom.y >= bb2.left_top.y
 end
 
 local function bbs_center(bbs)
     local center = { x = 0, y = 0 }
     for _, bb in pairs(bbs) do
-      local c = bb_center(bb)
+      local c = math2d.bounding_box.get_centre(bb)
       center.x = center.x + c.x
       center.y = center.y + c.y
     end
@@ -208,7 +218,7 @@ local function mark_chunk(force, surface, chunk_position)
     -- find any neighboring chunks that have patches up against them
     -- and make sure they get searched as well
     for neighbor_chunk_position in cardinal_neighbors(chunk_position) do
-      if not position_list_contains(searched_chunks, neighbor_chunk_position) then
+      if not list_contains(searched_chunks, neighbor_chunk_position) then
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(patches) do
           if bb_adjacent(chunk_area(neighbor_chunk_position), patch.bb) then
@@ -220,11 +230,11 @@ local function mark_chunk(force, surface, chunk_position)
     end
   end
 
-  -- now mark each patch found
+  -- mark each patch
   for _, patch in pairs(patches) do
     local tag = {}
     tag.position = bbs_center(patch.bbs)
-    tag.text = patch.prototype.name
+    tag.text = string.format('%s', patch.prototype.name)
     tag.icon = get_resource_icon(patch.prototype)
 
     log('adding tag ' .. serpent.block(tag))
