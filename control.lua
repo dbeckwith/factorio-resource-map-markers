@@ -171,14 +171,25 @@ local function clear_tags()
 end
 
 local function tag_chunks(force, surface, chunks)
+  local chunks_str = ''
+  for _, chunk in pairs(chunks) do
+    if chunks_str ~= '' then
+      chunks_str = chunks_str .. ', '
+    end
+    chunks_str = chunks_str .. '(' .. chunk.x .. ',' .. chunk.y .. ')'
+  end
+  log('tagging ' .. #chunks .. ' chunks: ' .. chunks_str)
+
   -- TODO: group oil-like resources that are near to each other
   -- might want to do the same for normal resources as well
 
-  -- FIXME: on_configuration_changed not marking negative X chunks
-
   -- FIXME: startup only marks a few things
+  -- seems to be caused by chunks charting sequentially
+  -- need to handle when a chunk next to an existing patch
+  -- reveals more of the patch
 
   -- FIXME: total amounts disagree with builtin hovertext
+  -- mark-here seems correct, mark-all seems to be doubled
 
   -- TODO: distribute work over multiple ticks
   -- could make a work queue of chunks or something that's processed periodically
@@ -270,7 +281,8 @@ local function tag_chunks(force, surface, chunks)
     for neighbor_chunk in cardinal_neighbors(chunk) do
       -- only look at charted chunks that haven't been visited yet
       if force.is_chunk_charted(surface, neighbor_chunk) and
-        not contains(searched_chunks, neighbor_chunk) then
+        not contains(searched_chunks, neighbor_chunk) and
+        not contains(chunks_to_search, neighbor_chunk) then
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(patches) do
           if bb_adjacent(chunk_area(neighbor_chunk), patch.bb) then
