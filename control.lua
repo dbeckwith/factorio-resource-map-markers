@@ -180,6 +180,15 @@ local function patch_adjacent(patch, bb, exact)
   end
 end
 
+local function any_setting(players, setting)
+  for _, player in pairs(players) do
+    if player.mod_settings['sonaxaton-resource-map-markers-' .. setting].value then
+      return true
+    end
+  end
+  return false
+end
+
 local function fmt_chunks(chunks)
   local s = ''
   for _, chunk in pairs(chunks) do
@@ -252,19 +261,34 @@ local function show_tags(opts)
     if add then
       local tag = {}
       tag.position = bbs_center(patch.bbs)
-      local amount = nil
-      if patch.prototype.infinite_resource then
-        amount = math.floor(patch.amount
-            / #patch.bbs
-            / patch.prototype.normal_resource_amount
-            * 100) .. '%'
-      else
-        amount = util.format_number(patch.amount, true)
-      end
-      tag.text = string.format('%s - %s',
-        patch.prototype.name,
-        amount)
       tag.icon = get_resource_icon(patch.prototype)
+
+      local name = nil
+      if any_setting(patch.force.players, 'show-resource-name') then
+        name = patch.prototype.name
+      end
+      local amount = nil
+      if any_setting(patch.force.players, 'show-resource-amount') then
+        if patch.prototype.infinite_resource then
+          amount = math.floor(patch.amount
+              / #patch.bbs
+              / patch.prototype.normal_resource_amount
+              * 100) .. '%'
+        else
+          amount = util.format_number(patch.amount, true)
+        end
+      end
+      if name ~= nil then
+        if amount ~= nil then
+          tag.text = string.format('%s - %s',
+            patch.prototype.name,
+            amount)
+        else
+          tag.text = name
+        end
+      elseif amount ~= nil then
+        tag.text = amount
+      end
 
       log('adding tag ' .. serpent.block(tag))
       patch.tag = patch.force.add_chart_tag(patch.surface, tag)
@@ -499,8 +523,3 @@ commands.add_command('resource-map-markers', '', function(event)
     player.print('valid sub-commands are: mark, clear, hide, show, or mark-here')
   end
 end)
-
--- TODO: mod settings
--- hide resource name
--- hide patch amount
--- configure chunks processed per tick?
