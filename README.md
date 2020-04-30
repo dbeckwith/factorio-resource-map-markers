@@ -1,0 +1,20 @@
+# Resource Map Markers
+
+This is a mod for the game [Factorio](https://www.factorio.com/). It can be downloaded from the [Factorio Mod Portal](https://mods.factorio.com/mod/sonaxaton-resource-map-markers).
+
+## Description
+
+This mod will automatically create markers on your map for resource patches. The markers use the icon of the resource and include the name and amount of resource in the patch. For normal resources, the total amount is displayed. For infinite resources like oil, the average yield is displayed. There are mod settings to hide the name or amount if you want. Should work with all modded resources as well.
+
+As the map is revealed, new chunks are scanned for resources in a very efficient way to add and update map markers. You can also edit/remove the markers yourself if you want, or use commands to control them:
+
+* `/resource-map-markers mark` - Clear all existing markers added by the mod then search all chunks on all surfaces for resources and add markers for them.
+* `/resource-map-markers clear` - Clear all existing markers added by the mod.
+* `/resource-map-markers hide` - Hide resource markers. The markers can be shown again without scanning chunks.
+* `/resource-map-markers show` - Show any hidden resource markers without scanning chunks. Will also restore any markers you may have deleted manually.
+* `/resource-map-markers mark-here` - Search your current chunk for resources and add markers for them.
+
+## Known issues
+
+* Marker labels use the internal name of the resource. Currently there is no way to fix this since Factorio mods cannot access the translated names of things.
+* Oil-like resource patches that are nearby aren't grouped together properly. I put in a [modding API request](https://forums.factorio.com/viewtopic.php?f=28&t=84405) to get access to the property needed to fix this, and will update when that's fulfilled.
