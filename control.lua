@@ -1,16 +1,6 @@
 local math2d = require('math2d')
 local util = require('util')
 
-local function chunks_contains(chunks, chunk)
-  for _, chunk2 in pairs(chunks) do
-    if chunk.position.x == chunk2.position.x and
-      chunk.position.y == chunk2.position.y then
-      return true
-    end
-  end
-  return false
-end
-
 local function list_reverse_pairs(t)
   local i = #t + 1
   return function()
@@ -138,6 +128,76 @@ local function bbs_center(bbs)
     center.x = center.x / #bbs
     center.y = center.y / #bbs
     return center
+end
+
+function chunks_new()
+  return {
+    queue = {},
+    searched = {},
+    head = nil,
+  }
+end
+
+function chunk_key(chunk)
+  return chunk.surface.name .. ':' ..
+    chunk.force.name .. ':' ..
+    chunk.position.x .. ':' ..
+    chunk.position.y
+end
+
+function chunks_empty()
+  return global.chunks.head == nil
+end
+
+function chunks_add(chunk)
+  local key = chunk_key(chunk)
+  if global.chunks.queue[key] == nil and global.chunks.searched[key] == nil then
+    global.chunks.queue[key] = chunk
+
+    chunk.next = global.chunks.head
+    global.chunks.head = key
+  end
+end
+
+function chunks_next()
+  local chunk = global.chunks.queue[global.chunks.head]
+  global.chunks.queue[global.chunks.head] = nil
+  global.chunks.searched[global.chunks.head] = chunk
+
+  global.chunks.head = chunk.next
+  chunk.next = nil
+
+  return chunk
+end
+
+function chunks_contains(chunk)
+  local key = chunk_key(chunk)
+  return global.chunks.queue[key] ~= nil or global.chunks.searched[key] ~= nil
+end
+
+function chunks_remove_force(force)
+  local prev_key = nil
+  local key = global.chunks.head
+  while key ~= nil do
+    local chunk = global.chunks.queue[key]
+    if chunk.force == force then
+      global.chunks.queue[key] = nil
+
+      if key == global.chunks.head then
+        global.chunks.head = chunk.next
+      else
+        global.chunks.queue[prev_key].next = chunk.next
+      end
+    else
+      prev_key = key
+    end
+    key = chunk.next
+  end
+  for key, chunk in pairs(global.chunks.searched) do
+    if chunk.force == force then
+      global.chunks.searched[key] = nil
+    end
+  end
 end
 
 local function patch_adjacent(patch, bb, exact)
@@ -296,24 +356,18 @@ local function clear_tags(opts)
   hide_tags({ force = opts.force })
   if opts.force == nil then
     global.patches = {}
-    global.searched_chunks = {}
-    global.chunks_to_search = {}
+    global.chunks = chunks_new()
   else
     list_remove_if(global.patches,
       function(patch) return patch.force == opts.force end)
-    list_remove_if(global.searched_chunks,
-      function(chunk) return chunk.force == opts.force end)
-    list_remove_if(global.chunks_to_search,
-      function(chunk) return chunk.force == opts.force end)
+    chunks_remove_force(opts.force)
   end
 end
 
 local function tag_chunks(chunks)
   -- look at all chunks from input that haven't been searched already
   for _, chunk in ipairs(chunks) do
-    if not chunks_contains(global.searched_chunks, chunk) then
-      table.insert(global.chunks_to_search, chunk)
-    end
+    chunks_add(chunk)
   end
 end
 
@@ -351,10 +405,8 @@ end
 script.on_init(function()
   -- list of all connected resource entities of the same type
   global.patches = {}
-  -- list of chunks that have already been looked at
-  global.searched_chunks = {}
-  -- list of chunks that need to be looked at
-  global.chunks_to_search = {}
+  -- list of chunks that will be or have been processed
+  global.chunks = chunks_new()
 end)
 
 script.on_configuration_changed(function()
@@ -375,16 +427,14 @@ local PROCESS_BATCH = 100
 script.on_nth_tick(PROCESS_FREQUENCY, function()
   local any_new_patches = false
   local chunks_processed_this_tick = 0
-  while #global.chunks_to_search ~= 0 and
+  while not chunks_empty() and
     chunks_processed_this_tick < PROCESS_BATCH
   do
     -- TODO: don't count empty chunks?
     chunks_processed_this_tick = chunks_processed_this_tick + 1
 
-    local chunk = table.remove(global.chunks_to_search)
-
-    -- mark this chunk as searched
-    table.insert(global.searched_chunks, chunk)
+    -- get next chunk to process
+    local chunk = chunks_next()
 
     -- find all resources in chunk
     local resource_entities = chunk.surface.find_entities_filtered{
@@ -448,14 +498,12 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
       if neighbor_chunk.force.is_chunk_charted(
           neighbor_chunk.surface,
           neighbor_chunk.position) and
-        -- TODO: make array-set structure to optimize this
-        not chunks_contains(global.searched_chunks, neighbor_chunk) and
-        not chunks_contains(global.chunks_to_search, neighbor_chunk)
+        not chunks_contains(neighbor_chunk)
       then
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in ipairs(global.patches) do
           if patch_adjacent(patch, chunk_area(neighbor_chunk), false) then
-            table.insert(global.chunks_to_search, neighbor_chunk)
+            chunks_add(neighbor_chunk)
             break
           end
         end
