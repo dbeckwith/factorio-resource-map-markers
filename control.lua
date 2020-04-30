@@ -208,7 +208,7 @@ local function hide_tags(opts)
       players = game.players
     end
     for _, player in pairs(players) do
-      player.print('hiding resource markers')
+      player.print({'command.resource-map-markers.hide-notice'})
     end
   end
   for _, patch in pairs(global.patches) do
@@ -229,7 +229,7 @@ local function show_tags(opts)
       players = game.players
     end
     for _, player in pairs(players) do
-      player.print('showing hidden resource markers')
+      player.print({'command.resource-map-markers.show-notice'})
     end
   end
   for _, patch in pairs(global.patches) do
@@ -292,7 +292,7 @@ local function clear_tags(opts)
       players = game.players
     end
     for _, player in pairs(players) do
-      player.print('clearing resource markers')
+      player.print({'command.resource-map-markers.clear-notice'})
     end
   end
   hide_tags({ force = opts.force })
@@ -332,7 +332,7 @@ local function tag_all(opts)
   for _, force in pairs(forces) do
     if opts.announce then
       for _, player in pairs(force.players) do
-        player.print('marking resources in all surfaces')
+        player.print({'command.resource-map-markers.mark-notice'})
       end
     end
     for _, surface in pairs(game.surfaces) do
@@ -470,32 +470,30 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
   end
 end)
 
--- TODO: command help
-
-commands.add_command('resource-map-markers', '', function(event)
-  local player = game.players[event.player_index]
-  local args = util.split_whitespace(event.parameter)
-  if #args == 0 then
-    player.print('a sub-command is required: mark, clear, hide, show, or mark-here')
-  elseif args[1] == 'mark' then
-    tag_all({ force = player.force, announce = true })
-  elseif args[1] == 'clear' then
-    clear_tags({ force = player.force, announce = true })
-  elseif args[1] == 'hide' then
-    hide_tags({ force = player.force, announce = true })
-  elseif args[1] == 'show' then
-    show_tags({ recreate_invalid = true, force = player.force, announce = true })
-  elseif args[1] == 'mark-here' then
-    player.print('marking resources in your current chunk')
-    tag_chunks({{
-      position = chunk_containing(player.position),
-      force = player.force,
-      surface = player.surface,
-    }})
-  else
-    player.print(string.format(
-      'unrecognized resource-map-markers command %q',
-      args[1]))
-    player.print('valid sub-commands are: mark, clear, hide, show, or mark-here')
-  end
-end)
+commands.add_command(
+  'resource-map-markers',
+  {'command.resource-map-markers.help'},
+  function(event)
+    local player = game.players[event.player_index]
+    local args = util.split_whitespace(event.parameter)
+    if #args == 0 then
+      player.print({'command.resource-map-markers.help'})
+    elseif args[1] == 'mark' then
+      tag_all({ force = player.force, announce = true })
+    elseif args[1] == 'clear' then
+      clear_tags({ force = player.force, announce = true })
+    elseif args[1] == 'hide' then
+      hide_tags({ force = player.force, announce = true })
+    elseif args[1] == 'show' then
+      show_tags({ recreate_invalid = true, force = player.force, announce = true })
+    elseif args[1] == 'mark-here' then
+      player.print({'command.resource-map-markers.mark-here-notice'})
+      tag_chunks({{
+        position = chunk_containing(player.position),
+        force = player.force,
+        surface = player.surface,
+      }})
+    else
+      player.print({'command.resource-map-markers.bad-subcommand', args[1]})
+    end
+  end)
