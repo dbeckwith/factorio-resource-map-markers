@@ -364,13 +364,6 @@ local function clear_tags(opts)
   end
 end
 
-local function tag_chunks(chunks)
-  -- look at all chunks from input that haven't been searched already
-  for _, chunk in ipairs(chunks) do
-    chunks_add(chunk)
-  end
-end
-
 local function tag_all(opts)
   opts = opts or {}
   clear_tags({ force = opts.force })
@@ -380,7 +373,6 @@ local function tag_all(opts)
   else
     forces = game.forces
   end
-  local chunks = {}
   for _, force in pairs(forces) do
     if opts.announce then
       for _, player in pairs(force.players) do
@@ -390,7 +382,7 @@ local function tag_all(opts)
     for _, surface in pairs(game.surfaces) do
       for chunk in surface.get_chunks() do
         if force.is_chunk_charted(surface, chunk) then
-          table.insert(chunks, {
+          chunks_add({
             position = chunk,
             force = force,
             surface = surface,
@@ -399,7 +391,6 @@ local function tag_all(opts)
       end
     end
   end
-  tag_chunks(chunks)
 end
 
 script.on_init(function()
@@ -414,106 +405,117 @@ script.on_configuration_changed(function()
 end)
 
 script.on_event(defines.events.on_chunk_charted, function(event)
-  tag_chunks({{
+  chunks_add({
     position = event.position,
     force = event.force,
     surface = game.surfaces[event.surface_index],
-  }})
+  })
 end)
 
 local PROCESS_FREQUENCY = 10
-local PROCESS_BATCH = 100
+local PROCESS_TOTAL_BATCH = 1000
+local PROCESS_NONEMPTY_BATCH = 1
+
+-- FIXME: main slow-down is probably iterating patches
+-- should implement a basic spatial structure
 
 script.on_nth_tick(PROCESS_FREQUENCY, function()
-  local any_new_patches = false
-  local chunks_processed_this_tick = 0
-  while not chunks_empty() and
-    chunks_processed_this_tick < PROCESS_BATCH
-  do
-    -- TODO: don't count empty chunks?
-    chunks_processed_this_tick = chunks_processed_this_tick + 1
+  log('processing')
 
+  local chunks_processed_this_tick = 0
+  local nonempty_chunks_processed_this_tick = 0
+  while not chunks_empty() and
+    chunks_processed_this_tick < PROCESS_TOTAL_BATCH and
+    nonempty_chunks_processed_this_tick < PROCESS_NONEMPTY_BATCH
+  do
     -- get next chunk to process
     local chunk = chunks_next()
+    chunks_processed_this_tick = chunks_processed_this_tick + 1
 
     -- find all resources in chunk
     local resource_entities = chunk.surface.find_entities_filtered{
       area = chunk_area(chunk),
       type = 'resource',
     }
-    for _, resource_entity in ipairs(resource_entities) do
-      -- find and remove all patches the current entity is adjacent to
-      -- and merge them into one
-      local merged_patch = {
-        prototype = resource_entity.prototype,
-        bbs = {resource_entity.bounding_box},
-        bb = resource_entity.bounding_box,
-        amount = resource_entity.amount,
-        force = chunk.force,
-        surface = chunk.surface,
-      }
-      list_remove_if(global.patches, function(patch)
-        -- merge patches with the same resource, force, and surface
-        -- that are adjacent to the current entity
-        if resource_entity.prototype == patch.prototype and
-          chunk.force == patch.force and
-          chunk.surface == patch.surface and
-          patch_adjacent(patch, resource_entity.bounding_box, true)
-        then
-          merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
-          merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
-          merged_patch.amount = merged_patch.amount + patch.amount
 
-          -- don't need to bother with prototype, force, and surface
-          -- since they are the same
+    if #resource_entities ~= 0 then
+      nonempty_chunks_processed_this_tick = nonempty_chunks_processed_this_tick + 1
 
-          -- clear the tag of the existing patch if it had one
-          -- one will be created for the merged patch later
-          if patch.tag ~= nil then
-            patch.tag.destroy()
-            patch.tag = nil
+      for _, resource_entity in ipairs(resource_entities) do
+        -- find and remove all patches the current entity is adjacent to
+        -- and merge them into one
+        local merged_patch = {
+          prototype = resource_entity.prototype,
+          bbs = {resource_entity.bounding_box},
+          bb = resource_entity.bounding_box,
+          amount = resource_entity.amount,
+          force = chunk.force,
+          surface = chunk.surface,
+        }
+        list_remove_if(global.patches, function(patch)
+          -- merge patches with the same resource, force, and surface
+          -- that are adjacent to the current entity
+          if resource_entity.prototype == patch.prototype and
+            chunk.force == patch.force and
+            chunk.surface == patch.surface and
+            patch_adjacent(patch, resource_entity.bounding_box, true)
+          then
+            merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
+            merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
+            merged_patch.amount = merged_patch.amount + patch.amount
+
+            -- don't need to bother with prototype, force, and surface
+            -- since they are the same
+
+            -- clear the tag of the existing patch if it had one
+            -- one will be created for the merged patch later
+            if patch.tag ~= nil then
+              patch.tag.destroy()
+              patch.tag = nil
+            end
+
+            -- remove the merged patch from the global list
+            return true
+          else
+            return false
           end
+        end)
 
-          -- remove the merged patch from the global list
-          return true
-        else
-          return false
-        end
-      end)
+        -- record the merged patch
+        table.insert(global.patches, merged_patch)
+      end
 
-      -- record the merged patch
-      table.insert(global.patches, merged_patch)
-      any_new_patches = true
-    end
-
-    -- find any neighboring chunks that have patches up against them
-    -- and make sure they get searched as well
-    for neighbor_chunk in cardinal_neighbors(chunk.position) do
-      neighbor_chunk = {
-        position = neighbor_chunk,
-        force = chunk.force,
-        surface = chunk.surface,
-      }
-      -- only look at charted chunks that haven't been visited yet
-      if neighbor_chunk.force.is_chunk_charted(
-          neighbor_chunk.surface,
-          neighbor_chunk.position) and
-        not chunks_contains(neighbor_chunk)
-      then
-        -- see if any patches are adjacent to the neighboring chunk
-        for _, patch in ipairs(global.patches) do
-          if patch_adjacent(patch, chunk_area(neighbor_chunk), false) then
-            chunks_add(neighbor_chunk)
-            break
+      -- find any neighboring chunks that have patches up against them
+      -- and make sure they get searched as well
+      for neighbor_chunk in cardinal_neighbors(chunk.position) do
+        neighbor_chunk = {
+          position = neighbor_chunk,
+          force = chunk.force,
+          surface = chunk.surface,
+        }
+        -- only look at charted chunks that haven't been visited yet
+        if neighbor_chunk.force.is_chunk_charted(
+            neighbor_chunk.surface,
+            neighbor_chunk.position) and
+          not chunks_contains(neighbor_chunk)
+        then
+          -- see if any patches are adjacent to the neighboring chunk
+          for _, patch in ipairs(global.patches) do
+            if patch_adjacent(patch, chunk_area(neighbor_chunk), false) then
+              chunks_add(neighbor_chunk)
+              break
+            end
           end
         end
       end
     end
   end
 
-  if any_new_patches then
+  if nonempty_chunks_processed_this_tick > 0 then
     show_tags()
   end
+
+  log('processed '..chunks_processed_this_tick..','..nonempty_chunks_processed_this_tick)
 end)
 
 commands.add_command(
@@ -534,11 +536,11 @@ commands.add_command(
       show_tags({ recreate_invalid = true, force = player.force, announce = true })
     elseif args[1] == 'mark-here' then
       player.print({'command.resource-map-markers.mark-here-notice'})
-      tag_chunks({{
+      chunks_add({
         position = chunk_containing(player.position),
         force = player.force,
         surface = player.surface,
-      }})
+      })
     else
       player.print({'command.resource-map-markers.bad-subcommand', args[1]})
     end
