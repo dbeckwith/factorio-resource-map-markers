@@ -1,6 +1,15 @@
 local math2d = require('math2d')
 local util = require('util')
 
+local function get_or_set(t, k, init)
+  local v = t[k]
+  if v == nil then
+    v = init
+    t[k] = v
+  end
+  return v
+end
+
 local function list_reverse_pairs(t)
   local i = #t + 1
   return function()
@@ -105,6 +114,19 @@ local function bb_quantize(bb)
   }
 end
 
+local function bb_chunk(bb)
+  return {
+    left_top = {
+      x = math.floor(bb.left_top.x / 32),
+      y = math.floor(bb.left_top.y / 32),
+    },
+    right_bottom = {
+      x = math.floor(bb.right_bottom.x / 32),
+      y = math.floor(bb.right_bottom.y / 32),
+    },
+  }
+end
+
 local function bb_expand(bb, r)
   return {
     left_top = {
@@ -128,76 +150,6 @@ local function bbs_center(bbs)
     center.x = center.x / #bbs
     center.y = center.y / #bbs
     return center
-end
-
-function chunks_new()
-  return {
-    queue = {},
-    searched = {},
-    head = nil,
-  }
-end
-
-function chunk_key(chunk)
-  return chunk.surface.name .. ':' ..
-    chunk.force.name .. ':' ..
-    chunk.position.x .. ':' ..
-    chunk.position.y
-end
-
-function chunks_empty()
-  return global.chunks.head == nil
-end
-
-function chunks_add(chunk)
-  local key = chunk_key(chunk)
-  if global.chunks.queue[key] == nil and global.chunks.searched[key] == nil then
-    global.chunks.queue[key] = chunk
-
-    chunk.next = global.chunks.head
-    global.chunks.head = key
-  end
-end
-
-function chunks_next()
-  local chunk = global.chunks.queue[global.chunks.head]
-  global.chunks.queue[global.chunks.head] = nil
-  global.chunks.searched[global.chunks.head] = chunk
-
-  global.chunks.head = chunk.next
-  chunk.next = nil
-
-  return chunk
-end
-
-function chunks_contains(chunk)
-  local key = chunk_key(chunk)
-  return global.chunks.queue[key] ~= nil or global.chunks.searched[key] ~= nil
-end
-
-function chunks_remove_force(force)
-  local prev_key = nil
-  local key = global.chunks.head
-  while key ~= nil do
-    local chunk = global.chunks.queue[key]
-    if chunk.force == force then
-      global.chunks.queue[key] = nil
-
-      if key == global.chunks.head then
-        global.chunks.head = chunk.next
-      else
-        global.chunks.queue[prev_key].next = chunk.next
-      end
-    else
-      prev_key = key
-    end
-    key = chunk.next
-  end
-  for key, chunk in pairs(global.chunks.searched) do
-    if chunk.force == force then
-      global.chunks.searched[key] = nil
-    end
-  end
 end
 
 local function patch_adjacent(patch, bb, exact)
@@ -236,6 +188,186 @@ local function patch_adjacent(patch, bb, exact)
   end
 end
 
+local function patches_new()
+  global.patches = {}
+end
+
+local function patches_add(patch)
+  local patches = global.patches
+  patches = get_or_set(patches, patch.force.name, {})
+  patches = get_or_set(patches, patch.surface.name, {})
+
+  local patches_set = get_or_set(patches, 'set', {})
+  patches_set[patch] = true
+
+  local patches_chunks = get_or_set(patches, 'chunks', {})
+  local chunk_bb = bb_chunk(patch.bb)
+  for x = chunk_bb.left_top.x,chunk_bb.right_bottom.x do
+    local patches_for_x = get_or_set(patches_chunks, x, {})
+    for y = chunk_bb.left_top.y,chunk_bb.right_bottom.y do
+      local patches_for_xy = get_or_set(patches_for_x, y, {})
+      patches_for_xy[patch] = true
+    end
+  end
+end
+
+local function patches_remove_adjacent(force, surface, prototype, bb, for_each)
+  local patches = global.patches
+  patches = patches[force.name]
+  if patches == nil then return end
+  patches = patches[surface.name]
+  if patches == nil then return end
+
+  local patches_set = patches.set
+  local patches_chunks = patches.chunks
+  local chunk_bb = bb_chunk(bb)
+  for x = chunk_bb.left_top.x-1,chunk_bb.right_bottom.x+1 do
+    local patches_for_x = patches_chunks[x]
+    if patches_for_x ~= nil then
+      for y = chunk_bb.left_top.y-1,chunk_bb.right_bottom.y+1 do
+        local patches_for_xy = patches_for_x[y]
+        if patches_for_xy ~= nil then
+          for patch, _ in pairs(patches_for_xy) do
+            if patches_set[patch] ~= nil then
+              if patch.prototype == prototype and
+                patch_adjacent(patch, bb, false)
+              then
+                for_each(patch)
+                patches_set[patch] = nil
+              end
+            end
+            if patches_set[patch] == nil then
+              patches_for_xy[patch] = nil
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+local function patches_any_adjacent_chunk(chunk)
+  local patches = global.patches
+  patches = patches[chunk.force.name]
+  if patches == nil then return end
+  patches = patches[chunk.surface.name]
+  if patches == nil then return end
+
+  local patches_chunks = patches.chunks
+  local bb = chunk_area(chunk)
+  local patches_already_processed = {}
+  for x = chunk.position.x-1,chunk.position.x+1 do
+    local patches_for_x = patches_chunks[x]
+    if patches_for_x ~= nil then
+      for y = chunk.position.y-1,chunk.position.y+1 do
+        local patches_for_xy = patches_for_x[y]
+        if patches_for_xy ~= nil then
+          for patch, _ in pairs(patches_for_xy) do
+            if patches_already_processed[patch] == nil then
+              if patch_adjacent(patch, bb, false) then
+                return true
+              end
+            else
+              patches_already_processed[patch] = true
+            end
+          end
+        end
+      end
+    end
+  end
+
+  return false
+end
+
+local function patches_remove_force(force)
+  global.patches[force.name] = nil
+end
+
+local function patches_for_each(force, for_each)
+  local patches = global.patches
+  if force ~= nil then
+    patches = {patches[force.name]}
+  end
+  for _, patches in pairs(patches) do
+    for _, patches in pairs(patches) do
+      for patch, _ in pairs(patches.set) do
+        for_each(patch)
+      end
+    end
+  end
+end
+
+local function chunk_key(chunk)
+  return chunk.force.name .. ':' ..
+    chunk.surface.name .. ':' ..
+    chunk.position.x .. ':' ..
+    chunk.position.y
+end
+
+local function chunks_new()
+  global.chunks = {
+    queue = {},
+    searched = {},
+    head = nil,
+  }
+end
+
+local function chunks_empty()
+  return global.chunks.head == nil
+end
+
+local function chunks_add(chunk)
+  local key = chunk_key(chunk)
+  if global.chunks.queue[key] == nil and global.chunks.searched[key] == nil then
+    global.chunks.queue[key] = chunk
+
+    chunk.next = global.chunks.head
+    global.chunks.head = key
+  end
+  -- TODO: if already in queue, bring to front
+end
+
+local function chunks_next()
+  local chunk = global.chunks.queue[global.chunks.head]
+  global.chunks.queue[global.chunks.head] = nil
+  global.chunks.searched[global.chunks.head] = chunk
+
+  global.chunks.head = chunk.next
+  chunk.next = nil
+
+  return chunk
+end
+
+local function chunks_contains(chunk)
+  local key = chunk_key(chunk)
+  return global.chunks.queue[key] ~= nil or global.chunks.searched[key] ~= nil
+end
+
+local function chunks_remove_force(force)
+  local prev_key = nil
+  local key = global.chunks.head
+  while key ~= nil do
+    local chunk = global.chunks.queue[key]
+    if chunk.force == force then
+      global.chunks.queue[key] = nil
+
+      if key == global.chunks.head then
+        global.chunks.head = chunk.next
+      else
+        global.chunks.queue[prev_key].next = chunk.next
+      end
+    else
+      prev_key = key
+    end
+    key = chunk.next
+  end
+  for key, chunk in pairs(global.chunks.searched) do
+    if chunk.force == force then
+      global.chunks.searched[key] = nil
+    end
+  end
+end
+
 local function any_setting(players, setting)
   for _, player in pairs(players) do
     if player.mod_settings['sonaxaton-resource-map-markers-' .. setting].value then
@@ -267,14 +399,12 @@ local function hide_tags(opts)
       player.print({'command.resource-map-markers.hide-notice'})
     end
   end
-  for _, patch in pairs(global.patches) do
-    if (opts.force == nil or patch.force == opts.force) and
-      patch.tag ~= nil
-    then
+  patches_for_each(opts.force, function(patch)
+    if patch.tag ~= nil then
       patch.tag.destroy()
       patch.tag = nil
     end
-  end
+  end)
 end
 
 local function show_tags(opts)
@@ -290,19 +420,15 @@ local function show_tags(opts)
       player.print({'command.resource-map-markers.show-notice'})
     end
   end
-  for _, patch in pairs(global.patches) do
+  patches_for_each(opts.force, function(patch)
     local add = false
-    if opts.force ~= nil and patch.force ~= opts.force then
-      add = false
+    if patch.tag == nil then
+      add = true
     else
-      if patch.tag == nil then
+      if opts.recreate_invalid and not patch.tag.valid then
         add = true
       else
-        if opts.recreate_invalid and not patch.tag.valid then
-          add = true
-        else
-          add = false
-        end
+        add = false
       end
     end
     if add then
@@ -337,7 +463,7 @@ local function show_tags(opts)
 
       patch.tag = patch.force.add_chart_tag(patch.surface, tag)
     end
-  end
+  end)
 end
 
 local function clear_tags(opts)
@@ -355,11 +481,10 @@ local function clear_tags(opts)
   end
   hide_tags({ force = opts.force })
   if opts.force == nil then
-    global.patches = {}
-    global.chunks = chunks_new()
+    patches_new()
+    chunks_new()
   else
-    list_remove_if(global.patches,
-      function(patch) return patch.force == opts.force end)
+    patches_remove_force(opts.force)
     chunks_remove_force(opts.force)
   end
 end
@@ -394,10 +519,8 @@ local function tag_all(opts)
 end
 
 script.on_init(function()
-  -- list of all connected resource entities of the same type
-  global.patches = {}
-  -- list of chunks that will be or have been processed
-  global.chunks = chunks_new()
+  patches_new()
+  chunks_new()
 end)
 
 script.on_configuration_changed(function()
@@ -412,15 +535,12 @@ script.on_event(defines.events.on_chunk_charted, function(event)
   })
 end)
 
-local PROCESS_FREQUENCY = 10
-local PROCESS_TOTAL_BATCH = 1000
+local PROCESS_FREQUENCY = 1
+local PROCESS_TOTAL_BATCH = 100
 local PROCESS_NONEMPTY_BATCH = 1
 
--- FIXME: main slow-down is probably iterating patches
--- should implement a basic spatial structure
-
 script.on_nth_tick(PROCESS_FREQUENCY, function()
-  log('processing')
+  if not chunks_empty() then log('processing') end
 
   local chunks_processed_this_tick = 0
   local nonempty_chunks_processed_this_tick = 0
@@ -452,14 +572,12 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
           force = chunk.force,
           surface = chunk.surface,
         }
-        list_remove_if(global.patches, function(patch)
-          -- merge patches with the same resource, force, and surface
-          -- that are adjacent to the current entity
-          if resource_entity.prototype == patch.prototype and
-            chunk.force == patch.force and
-            chunk.surface == patch.surface and
-            patch_adjacent(patch, resource_entity.bounding_box, true)
-          then
+        patches_remove_adjacent(
+          chunk.force,
+          chunk.surface,
+          resource_entity.prototype,
+          resource_entity.bounding_box,
+          function(patch)
             merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
             merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
             merged_patch.amount = merged_patch.amount + patch.amount
@@ -473,16 +591,10 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
               patch.tag.destroy()
               patch.tag = nil
             end
-
-            -- remove the merged patch from the global list
-            return true
-          else
-            return false
-          end
-        end)
+          end)
 
         -- record the merged patch
-        table.insert(global.patches, merged_patch)
+        patches_add(merged_patch)
       end
 
       -- find any neighboring chunks that have patches up against them
@@ -500,11 +612,8 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
           not chunks_contains(neighbor_chunk)
         then
           -- see if any patches are adjacent to the neighboring chunk
-          for _, patch in ipairs(global.patches) do
-            if patch_adjacent(patch, chunk_area(neighbor_chunk), false) then
-              chunks_add(neighbor_chunk)
-              break
-            end
+          if patches_any_adjacent_chunk(neighbor_chunk) then
+            chunks_add(neighbor_chunk)
           end
         end
       end
@@ -515,7 +624,9 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
     show_tags()
   end
 
-  log('processed '..chunks_processed_this_tick..','..nonempty_chunks_processed_this_tick)
+  if chunks_processed_this_tick > 0 then
+    log('processed '..nonempty_chunks_processed_this_tick..'/'..chunks_processed_this_tick)
+  end
 end)
 
 commands.add_command(
