@@ -14,6 +14,8 @@ As the map is revealed, new chunks are scanned for resources in a very efficient
 * `/resource-map-markers show` - Show any hidden resource markers without scanning chunks. Will also restore any markers you may have deleted manually.
 * `/resource-map-markers mark-here` - Search your current chunk for resources and add markers for them.
 
+I made this mod as an alternative to [Resource Map Label Marker](https://mods.factorio.com/mod/resourceMarker) because I didn't like how that mod revealed new chunks to mark resources. My mod will never reveal new chunks or mark resources on chunks outside of ones that are already visible. I also just thought it would be fun to learn more about modding by implementing this myself. I ended up with a very different approach than that mod which should be very efficient even for large maps.
+
 ## Known issues
 
 * Marker labels use the internal name of the resource. Currently there is no way to fix this since Factorio mods cannot access the translated names of things.
