@@ -280,9 +280,7 @@ local function show_tags(opts)
       end
       if name ~= nil then
         if amount ~= nil then
-          tag.text = string.format('%s - %s',
-            patch.prototype.name,
-            amount)
+          tag.text = patch.prototype.name .. ' ' .. amount
         else
           tag.text = name
         end
