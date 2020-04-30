@@ -11,6 +11,28 @@ local function chunks_contains(chunks, chunk)
   return false
 end
 
+local function list_reverse_pairs(t)
+  local i = #t + 1
+  return function()
+    i = i - 1
+    if i > 0 then
+      return i, t[i]
+    end
+  end
+end
+
+local function list_remove_if(t, f)
+  local idxs = {}
+  for idx, el in pairs(t) do
+    if f(el) then
+      table.insert(idxs, idx)
+    end
+  end
+  for _, idx in list_reverse_pairs(idxs) do
+    table.remove(t, idx)
+  end
+end
+
 local function list_concat(l1, l2)
   if #l1 == 0 then
     return l2
@@ -158,6 +180,17 @@ local function patch_adjacent(patch, bb, exact)
   end
 end
 
+local function fmt_chunks(chunks)
+  local s = ''
+  for _, chunk in pairs(chunks) do
+    if s ~= '' then
+      s = s .. ', '
+    end
+    s = s .. '(' .. chunk.position.x .. ',' .. chunk.position.y .. ')'
+  end
+  return s
+end
+
 local function get_resource_icon(resource_prototype)
   -- TODO: select best product for icon
   for _, product in pairs(resource_prototype.mineable_properties.products) do
@@ -168,25 +201,53 @@ local function get_resource_icon(resource_prototype)
   end
 end
 
-local function hide_tags()
+local function hide_tags(opts)
+  opts = opts or {}
+  if opts.announce then
+    local players = {}
+    if opts.force ~= nil then
+      players = opts.force.players
+    else
+      players = game.players
+    end
+    for _, player in pairs(players) do
+      player.print('hiding resource markers')
+    end
+  end
   for _, patch in pairs(global.patches) do
-    if patch.tag ~= nil then
+    if (opts.force == nil or patch.force == opts.force) and patch.tag ~= nil then
       patch.tag.destroy()
       patch.tag = nil
     end
   end
 end
 
-local function show_tags(recreate_invalid)
+local function show_tags(opts)
+  opts = opts or {}
+  if opts.announce then
+    local players = {}
+    if opts.force ~= nil then
+      players = opts.force.players
+    else
+      players = game.players
+    end
+    for _, player in pairs(players) do
+      player.print('showing hidden resource markers')
+    end
+  end
   for _, patch in pairs(global.patches) do
     local add = false
-    if patch.tag == nil then
-      add = true
+    if opts.force ~= nil and patch.force ~= opts.force then
+      add = false
     else
-      if recreate_invalid and not patch.tag.valid then
+      if patch.tag == nil then
         add = true
       else
-        add = false
+        if opts.recreate_invalid and not patch.tag.valid then
+          add = true
+        else
+          add = false
+        end
       end
     end
     if add then
@@ -212,21 +273,32 @@ local function show_tags(recreate_invalid)
   end
 end
 
-local function clear_tags()
-  hide_tags()
-  global.patches = {}
-  global.searched_chunks = {}
-end
-
-local function fmt_chunks(chunks)
-  local s = ''
-  for _, chunk in pairs(chunks) do
-    if s ~= '' then
-      s = s .. ', '
+local function clear_tags(opts)
+  opts = opts or {}
+  if opts.announce then
+    local players = {}
+    if opts.force ~= nil then
+      players = opts.force.players
+    else
+      players = game.players
     end
-    s = s .. '(' .. chunk.position.x .. ',' .. chunk.position.y .. ')'
+    for _, player in pairs(players) do
+      player.print('clearing resource markers')
+    end
   end
-  return s
+  hide_tags({ force = opts.force })
+  if opts.force == nil then
+    global.patches = {}
+    global.searched_chunks = {}
+    global.chunks_to_search = {}
+  else
+    list_remove_if(global.patches,
+      function(patch) return patch.force == opts.force end)
+    list_remove_if(global.searched_chunks,
+      function(chunk) return chunk.force == opts.force end)
+    list_remove_if(global.chunks_to_search,
+      function(chunk) return chunk.force == opts.force end)
+  end
 end
 
 local function tag_chunks(chunks)
@@ -242,10 +314,22 @@ local function tag_chunks(chunks)
   end
 end
 
-local function tag_all()
-  clear_tags()
+local function tag_all(opts)
+  opts = opts or {}
+  clear_tags({ force = opts.force })
+  local forces = {}
+  if opts.force ~= nil then
+    forces = {opts.force}
+  else
+    forces = game.forces
+  end
   local chunks = {}
-  for _, force in pairs(game.forces) do
+  for _, force in pairs(forces) do
+    if opts.announce then
+      for _, player in pairs(force.players) do
+        player.print('marking resources in all surfaces')
+      end
+    end
     for _, surface in pairs(game.surfaces) do
       for chunk in surface.get_chunks() do
         if force.is_chunk_charted(surface, chunk) then
@@ -323,10 +407,6 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
         end
       end
 
-      -- sort the indexes in reverse order since we will be removing them all
-      -- from the patches list
-      table.sort(adjacent_patches, function(i, j) return i > j end)
-
       -- TODO: optimize case of only one adjacent patch
 
       -- remove all adjacent patches and merge them into one
@@ -338,7 +418,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
         force = chunk.force,
         surface = chunk.surface,
       }
-      for _, patch_idx in pairs(adjacent_patches) do
+      for _, patch_idx in list_reverse_pairs(adjacent_patches) do
         local patch = table.remove(global.patches, patch_idx)
 
         merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
@@ -379,7 +459,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(global.patches) do
           if patch_adjacent(patch, chunk_area(neighbor_chunk), false) then
-            log('adding neighbor chunk ' .. neighbor_chunk.x .. ',' .. neighbor_chunk.y)
+            log('adding neighbor chunk ' .. neighbor_chunk.position.x .. ',' .. neighbor_chunk.position.y)
             table.insert(global.chunks_to_search, neighbor_chunk)
             break
           end
@@ -389,7 +469,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
   end
 
   if any_new_patches then
-    show_tags(false)
+    show_tags()
   end
 end)
 
@@ -399,22 +479,17 @@ commands.add_command('resource-map-markers', '', function(event)
   local player = game.players[event.player_index]
   local args = util.split_whitespace(event.parameter)
   if #args == 0 then
-    player.print('a sub-command is required: mark-all, clear-all, hide, show, or mark-here')
-  elseif args[1] == 'mark-all' then
-    player.print('marking all resources in all surfaces')
-    tag_all()
-  elseif args[1] == 'clear-all' then
-    player.print('clearing resource markers')
-    clear_tags()
+    player.print('a sub-command is required: mark, clear, hide, show, or mark-here')
+  elseif args[1] == 'mark' then
+    tag_all({ force = player.force, announce = true })
+  elseif args[1] == 'clear' then
+    clear_tags({ force = player.force, announce = true })
   elseif args[1] == 'hide' then
-    player.print('hiding resource markers')
-    hide_tags()
+    hide_tags({ force = player.force, announce = true })
   elseif args[1] == 'show' then
-    player.print('showing hidden resource markers')
-    show_tags(true)
+    show_tags({ recreate_invalid = true, force = player.force, announce = true })
   elseif args[1] == 'mark-here' then
     player.print('marking resources in your current chunk')
-    local chunk =
     tag_chunks({{
       position = chunk_containing(player.position),
       force = player.force,
@@ -424,7 +499,7 @@ commands.add_command('resource-map-markers', '', function(event)
     player.print(string.format(
       'unrecognized resource-map-markers command %q',
       args[1]))
-    player.print('valid sub-commands are: mark-all, clear-all, hide, show, or mark-here')
+    player.print('valid sub-commands are: mark, clear, hide, show, or mark-here')
   end
 end)
 
