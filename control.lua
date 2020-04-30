@@ -189,17 +189,6 @@ local function any_setting(players, setting)
   return false
 end
 
-local function fmt_chunks(chunks)
-  local s = ''
-  for _, chunk in pairs(chunks) do
-    if s ~= '' then
-      s = s .. ', '
-    end
-    s = s .. '(' .. chunk.position.x .. ',' .. chunk.position.y .. ')'
-  end
-  return s
-end
-
 local function get_resource_icon(resource_prototype)
   for _, product in pairs(resource_prototype.mineable_properties.products) do
     return {
@@ -288,7 +277,6 @@ local function show_tags(opts)
         tag.text = amount
       end
 
-      log('adding tag ' .. serpent.block(tag))
       patch.tag = patch.force.add_chart_tag(patch.surface, tag)
     end
   end
@@ -323,10 +311,6 @@ local function clear_tags(opts)
 end
 
 local function tag_chunks(chunks)
-  log(string.format('tagging %d chunks: %s',
-    #chunks,
-    fmt_chunks(chunks)))
-
   -- look at all chunks from input that haven't been searched already
   for _, chunk in pairs(chunks) do
     if not chunks_contains(global.searched_chunks, chunk) then
@@ -397,12 +381,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
     chunks_processed_this_tick < PROCESS_BATCH do
     chunks_processed_this_tick = chunks_processed_this_tick + 1
 
-    log('chunks_to_search: ' .. fmt_chunks(global.chunks_to_search))
-    log('searched_chunks: ' .. fmt_chunks(global.searched_chunks))
-
     local chunk = table.remove(global.chunks_to_search)
-
-    log('searching chunk ' .. chunk.position.x .. ',' .. chunk.position.y)
 
     -- mark this chunk as searched
     table.insert(global.searched_chunks, chunk)
@@ -478,7 +457,6 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
         -- see if any patches are adjacent to the neighboring chunk
         for _, patch in pairs(global.patches) do
           if patch_adjacent(patch, chunk_area(neighbor_chunk), false) then
-            log('adding neighbor chunk ' .. neighbor_chunk.position.x .. ',' .. neighbor_chunk.position.y)
             table.insert(global.chunks_to_search, neighbor_chunk)
             break
           end
