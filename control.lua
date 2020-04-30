@@ -192,7 +192,6 @@ local function fmt_chunks(chunks)
 end
 
 local function get_resource_icon(resource_prototype)
-  -- TODO: select best product for icon
   for _, product in pairs(resource_prototype.mineable_properties.products) do
     return {
       type = product.type,
@@ -406,8 +405,6 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
           end
         end
       end
-
-      -- TODO: optimize case of only one adjacent patch
 
       -- remove all adjacent patches and merge them into one
       local merged_patch = {
