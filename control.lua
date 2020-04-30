@@ -389,8 +389,8 @@ script.on_event(defines.events.on_chunk_charted, function(event)
   }})
 end)
 
-local PROCESS_FREQUENCY = 1
-local PROCESS_BATCH = 1
+local PROCESS_FREQUENCY = 10
+local PROCESS_BATCH = 100
 
 script.on_nth_tick(PROCESS_FREQUENCY, function()
   local any_new_patches = false
