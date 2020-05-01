@@ -152,6 +152,13 @@ local function bbs_center(bbs)
     return center
 end
 
+local function patch_destroy_tag(patch)
+  if patch.tag ~= nil and patch.tag.valid then
+    patch.tag.destroy()
+  end
+  patch.tag = nil
+end
+
 local function patch_adjacent(patch, bb, exact)
   -- TODO: use patch.prototype.resource_patch_search_radius once implemented
   -- https://forums.factorio.com/viewtopic.php?f=28&t=84405
@@ -403,10 +410,7 @@ local function hide_tags(opts)
     end
   end
   patches_for_each(opts.force, function(patch)
-    if patch.tag ~= nil then
-      patch.tag.destroy()
-      patch.tag = nil
-    end
+    patch_destroy_tag(patch)
   end)
 end
 
@@ -465,6 +469,22 @@ local function show_tags(opts)
       end
 
       if tag.icon ~= nil or tag.text ~= nil then
+        local existing_tag_area = {
+          left_top = {
+            x = math.floor(tag.position.x),
+            y = math.floor(tag.position.y),
+          },
+          right_bottom = {
+            x = math.floor(tag.position.x) + 1,
+            y = math.floor(tag.position.y) + 1,
+          },
+        }
+        local existing_tags = patch.force.find_chart_tags(
+          patch.surface,
+          existing_tag_area)
+        for _, existing_tag in pairs(existing_tags) do
+          existing_tag.destroy()
+        end
         patch.tag = patch.force.add_chart_tag(patch.surface, tag)
       end
     end
@@ -590,10 +610,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
 
             -- clear the tag of the existing patch if it had one
             -- one will be created for the merged patch later
-            if patch.tag ~= nil then
-              patch.tag.destroy()
-              patch.tag = nil
-            end
+            patch_destroy_tag(patch)
           end)
 
         -- record the merged patch

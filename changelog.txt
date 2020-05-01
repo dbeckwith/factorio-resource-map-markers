@@ -1,20 +1,25 @@
 ---------------------------------------------------------------------------------------------------
-Version: 0.1.0
-Date: 2020-04-29
-  Features:
-    - Initial release!
----------------------------------------------------------------------------------------------------
-Version: 0.2.0
+Version: 0.2.3
 Date: 2020-05-01
-  Changes:
-    - The data structure for storing resource patches has been changed from a flat list to a spatial structure which makes the patch searching algorithm constant-time. This should improve performance greatly on large maps.
+  Bugfixes:
+    - Fixed issue with destroying existing tags
+---------------------------------------------------------------------------------------------------
+Version: 0.2.2
+Date: 2020-05-01
+  Bugfixes:
+    - Fixed crash with resources that have no mineable_properties
 ---------------------------------------------------------------------------------------------------
 Version: 0.2.1
 Date: 2020-05-01
   Bugfixes:
     - Fixed error accessing global resource patch data on startup
 ---------------------------------------------------------------------------------------------------
-Version: 0.2.2
+Version: 0.2.0
 Date: 2020-05-01
-  Bugfixes:
-    - Fixed crash with resources that have no mineable_properties
+  Changes:
+    - The data structure for storing resource patches has been changed from a flat list to a spatial structure which makes the patch searching algorithm constant-time. This should improve performance greatly on large maps.
+---------------------------------------------------------------------------------------------------
+Version: 0.1.0
+Date: 2020-04-29
+  Features:
+    - Initial release!
