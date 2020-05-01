@@ -5,6 +5,11 @@ Date: 2020-04-29
     - Initial release!
 ---------------------------------------------------------------------------------------------------
 Version: 0.2.0
-Date: 2020-04-29
+Date: 2020-05-01
   Changes:
     - The data structure for storing resource patches has been changed from a flat list to a spatial structure which makes the patch searching algorithm constant-time. This should improve performance greatly on large maps.
+---------------------------------------------------------------------------------------------------
+Version: 0.2.1
+Date: 2020-05-01
+  Bugfixes:
+    - Fixed error accessing global resource patch data on startup
