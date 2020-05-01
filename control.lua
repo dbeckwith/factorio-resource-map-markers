@@ -540,8 +540,6 @@ local PROCESS_TOTAL_BATCH = 100
 local PROCESS_NONEMPTY_BATCH = 1
 
 script.on_nth_tick(PROCESS_FREQUENCY, function()
-  if not chunks_empty() then log('processing') end
-
   local chunks_processed_this_tick = 0
   local nonempty_chunks_processed_this_tick = 0
   while not chunks_empty() and
@@ -622,10 +620,6 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
 
   if nonempty_chunks_processed_this_tick > 0 then
     show_tags()
-  end
-
-  if chunks_processed_this_tick > 0 then
-    log('processed '..nonempty_chunks_processed_this_tick..'/'..chunks_processed_this_tick)
   end
 end)
 

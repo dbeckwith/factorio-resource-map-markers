@@ -3,3 +3,8 @@ Version: 0.1.0
 Date: 2020-04-29
   Features:
     - Initial release!
+---------------------------------------------------------------------------------------------------
+Version: 0.2.0
+Date: 2020-04-29
+  Changes:
+    - The data structure for storing resource patches has been changed from a flat list to a spatial structure which makes the patch searching algorithm constant-time. This should improve performance greatly on large maps.
