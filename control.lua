@@ -378,6 +378,9 @@ local function any_setting(players, setting)
 end
 
 local function get_resource_icon(resource_prototype)
+  if resource_prototype.mineable_properties == nil then
+    return nil
+  end
   for _, product in ipairs(resource_prototype.mineable_properties.products) do
     return {
       type = product.type,
@@ -461,7 +464,9 @@ local function show_tags(opts)
         tag.text = amount
       end
 
-      patch.tag = patch.force.add_chart_tag(patch.surface, tag)
+      if tag.icon ~= nil or tag.text ~= nil then
+        patch.tag = patch.force.add_chart_tag(patch.surface, tag)
+      end
     end
   end)
 end

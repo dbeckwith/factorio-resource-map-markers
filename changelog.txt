@@ -13,3 +13,8 @@ Version: 0.2.1
 Date: 2020-05-01
   Bugfixes:
     - Fixed error accessing global resource patch data on startup
+---------------------------------------------------------------------------------------------------
+Version: 0.2.2
+Date: 2020-05-01
+  Bugfixes:
+    - Fixed crash with resources that have no mineable_properties
