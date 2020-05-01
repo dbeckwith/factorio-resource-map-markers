@@ -20,3 +20,7 @@ I made this mod as an alternative to [Resource Map Label Marker](https://mods.fa
 
 * Marker labels use the internal name of the resource. Currently there is no way to fix this since Factorio mods cannot access the translated names of things.
 * Oil-like resource patches that are nearby aren't grouped together properly. I put in a [modding API request](https://forums.factorio.com/viewtopic.php?f=28&t=84405) to get access to the property needed to fix this, and will update when that's fulfilled.
+
+## Removing the mod
+
+If you decide to remove the mod from an existing save, you might want to run the `/resource-map-markers clear` command first to clear any markers it may have added.
