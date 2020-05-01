@@ -158,10 +158,10 @@ local function patch_adjacent(patch, bb, exact)
   -- in vanilla is 3 for normal resources, 12 for oil
   local r = 3
 
-  bb = bb_quantize(bb)
+  bb = bb_expand(bb_quantize(bb), r)
 
   local function adjacent(bb1, bb2)
-    bb2 = bb_expand(bb_quantize(bb2), r)
+    bb2 = bb_quantize(bb2)
     return
       bb1.left_top.x <= bb2.right_bottom.x and
       bb1.right_bottom.x >= bb2.left_top.x and
