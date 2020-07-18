@@ -1,4 +1,12 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.4
+Date: 2020-07-18
+  Changes:
+    - Hidden tags will now stay hidden when new patches are discovered.
+    - When re-marking all resources, players will be notified when processing finishes in addition to when it starts.
+  Bugfixes:
+    - Fixed an issue where tags would get stuck after loading a save.
+---------------------------------------------------------------------------------------------------
 Version: 0.2.3
 Date: 2020-05-01
   Bugfixes:
