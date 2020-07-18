@@ -528,9 +528,11 @@ local function tag_all(opts)
   else
     forces = game.forces
   end
+  if opts.announce then
+    announce_finish_processing = {}
+  end
   for _, force in pairs(forces) do
     if opts.announce then
-      announce_finish_processing = {}
       for _, player in pairs(force.players) do
         player.print({'command.resource-map-markers.mark-notice'})
         table.insert(announce_finish_processing, player)
@@ -556,7 +558,7 @@ script.on_init(function()
 end)
 
 script.on_configuration_changed(function()
-  tag_all()
+  tag_all({ announce = true })
 end)
 
 script.on_event(defines.events.on_chunk_charted, function(event)
