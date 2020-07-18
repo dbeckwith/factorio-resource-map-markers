@@ -197,20 +197,16 @@ end
 
 local function patches_new()
   global.patches = {}
-  global.patches_by_id = {}
   global.next_patch_id = 0
 end
 
 local function patches_add(patch)
-  local patches_by_id = global.patches_by_id
-  patches_by_id[patch.id] = patch
-
   local patches = global.patches
   patches = get_or_set(patches, patch.force.name, {})
   patches = get_or_set(patches, patch.surface.name, {})
 
   local patches_set = get_or_set(patches, 'set', {})
-  patches_set[patch.id] = true
+  patches_set[patch.id] = patch
 
   local patches_chunks = get_or_set(patches, 'chunks', {})
   local chunk_bb = bb_chunk(patch.bb)
@@ -218,7 +214,7 @@ local function patches_add(patch)
     local patches_for_x = get_or_set(patches_chunks, x, {})
     for y = chunk_bb.left_top.y,chunk_bb.right_bottom.y do
       local patches_for_xy = get_or_set(patches_for_x, y, {})
-      patches_for_xy[patch.id] = true
+      patches_for_xy[patch.id] = patch
     end
   end
 end
@@ -230,8 +226,6 @@ local function patches_remove_adjacent(force, surface, prototype, bb, for_each)
   patches = patches[surface.name]
   if patches == nil then return end
 
-  local patches_by_id = global.patches_by_id
-
   local patches_set = patches.set
   local patches_chunks = patches.chunks
   local chunk_bb = bb_chunk(bb)
@@ -241,8 +235,7 @@ local function patches_remove_adjacent(force, surface, prototype, bb, for_each)
       for y = chunk_bb.left_top.y-1,chunk_bb.right_bottom.y+1 do
         local patches_for_xy = patches_for_x[y]
         if patches_for_xy ~= nil then
-          for patch_id, _ in pairs(patches_for_xy) do
-            local patch = patches_by_id[patch_id]
+          for _, patch in pairs(patches_for_xy) do
             if patches_set[patch.id] ~= nil then
               if patch.prototype == prototype and
                 patch_adjacent(patch, bb, false)
@@ -268,8 +261,6 @@ local function patches_any_adjacent_chunk(chunk)
   patches = patches[chunk.surface.name]
   if patches == nil then return end
 
-  local patches_by_id = global.patches_by_id
-
   local patches_chunks = patches.chunks
   local bb = chunk_area(chunk)
   local patches_already_processed = {}
@@ -279,8 +270,7 @@ local function patches_any_adjacent_chunk(chunk)
       for y = chunk.position.y-1,chunk.position.y+1 do
         local patches_for_xy = patches_for_x[y]
         if patches_for_xy ~= nil then
-          for patch_id, _ in pairs(patches_for_xy) do
-            local patch = patches_by_id[patch_id]
+          for _, patch in pairs(patches_for_xy) do
             if patches_already_processed[patch.id] == nil then
               if patch_adjacent(patch, bb, false) then
                 return true
@@ -306,11 +296,9 @@ local function patches_for_each(force, for_each)
   if force ~= nil then
     patches = {patches[force.name]}
   end
-  local patches_by_id = global.patches_by_id
   for _, patches in pairs(patches) do
     for _, patches in pairs(patches) do
-      for patch_id, _ in pairs(patches.set) do
-        local patch = patches_by_id[patch_id]
+      for _, patch in pairs(patches.set) do
         for_each(patch)
       end
     end
