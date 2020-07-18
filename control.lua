@@ -529,9 +529,9 @@ local function clear_tags(opts)
   end
 end
 
+local announce_finish_processing = nil
+
 local function tag_all(opts)
-  -- TODO: handle if already processing
-  -- TODO: announce when finished
   opts = opts or {}
   clear_tags({ force = opts.force })
   local forces = {}
@@ -542,8 +542,10 @@ local function tag_all(opts)
   end
   for _, force in pairs(forces) do
     if opts.announce then
+      announce_finish_processing = {}
       for _, player in pairs(force.players) do
         player.print({'command.resource-map-markers.mark-notice'})
+        table.insert(announce_finish_processing, player)
       end
     end
     for _, surface in pairs(game.surfaces) do
@@ -661,6 +663,13 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
 
   if nonempty_chunks_processed_this_tick > 0 then
     show_tags()
+  end
+
+  if announce_finish_processing ~= nil and chunks_processed_this_tick > 0 and chunks_empty() then
+    for _, player in ipairs(announce_finish_processing) do
+      player.print({'command.resource-map-markers.mark-finished-notice'})
+    end
+    announce_finish_processing = nil
   end
 end)
 
