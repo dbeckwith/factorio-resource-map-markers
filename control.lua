@@ -376,6 +376,10 @@ local function chunks_remove_force(force)
   end
 end
 
+local function translations_new()
+  global.translations = {}
+end
+
 local function any_setting(players, setting)
   for _, player in pairs(players) do
     if player.mod_settings['sonaxaton-resource-map-markers-' .. setting].value then
@@ -416,6 +420,92 @@ local function hide_tags(opts)
   end)
 end
 
+local function create_tag(patch)
+  local tag = {}
+  tag.position = bbs_center(patch.bbs)
+  tag.icon = get_resource_icon(patch.prototype)
+
+  local name = nil
+  if any_setting(patch.force.players, 'show-resource-name') then
+    local translations = global.translations
+    local translation = translations[patch.prototype.name]
+    if translation == nil then
+      -- no translation yet
+      -- use the prototype name in the mean time
+      name = patch.prototype.name
+
+      -- TODO: player selection here could be improved
+      -- currently, the first player in the force is used
+      -- could be the player initiating the marking?
+
+      -- select a player to translate the prototype name
+      -- there must be at least one player because of the any_setting check
+      local player = patch.force.players[next(patch.force.players)]
+
+      -- make a new translation request for the localised name of the resource
+      translations[patch.prototype.name] = {
+        player = player,
+        localised_string = patch.prototype.localised_name,
+      }
+      player.request_translation(patch.prototype.localised_name)
+    elseif translation.result == nil then
+      -- there is a pending translation request
+      -- use the prototype name in the mean time
+      name = patch.prototype.name
+    else
+      -- use the translated result
+      name = translation.result
+    end
+  end
+
+  local amount = nil
+  if any_setting(patch.force.players, 'show-resource-amount') then
+    if patch.prototype.infinite_resource then
+      amount = math.floor(patch.amount
+          / #patch.bbs
+          / patch.prototype.normal_resource_amount
+          * 100) .. '%'
+    else
+      amount = util.format_number(patch.amount, true)
+    end
+  end
+
+  if name ~= nil then
+    if amount ~= nil then
+      tag.text = name .. ' ' .. amount
+    else
+      tag.text = name
+    end
+  elseif amount ~= nil then
+    tag.text = amount
+  end
+
+  if tag.icon ~= nil or tag.text ~= nil then
+    -- clear existing tags very near the target position
+    local existing_tag_area = {
+      left_top = {
+        x = math.floor(tag.position.x),
+        y = math.floor(tag.position.y),
+      },
+      right_bottom = {
+        x = math.floor(tag.position.x) + 1,
+        y = math.floor(tag.position.y) + 1,
+      },
+    }
+    local existing_tags = patch.force.find_chart_tags(
+      patch.surface,
+      existing_tag_area)
+    for _, existing_tag in pairs(existing_tags) do
+      existing_tag.destroy()
+    end
+
+    patch.tag = patch.force.add_chart_tag(patch.surface, tag)
+    return patch.tag
+  else
+    return nil
+  end
+end
+
 local function show_tags(opts)
   opts = opts or {}
   if opts.announce then
@@ -441,55 +531,23 @@ local function show_tags(opts)
       add = false
     end
     if add then
-      local tag = {}
-      tag.position = bbs_center(patch.bbs)
-      tag.icon = get_resource_icon(patch.prototype)
-
-      local name = nil
-      if any_setting(patch.force.players, 'show-resource-name') then
-        name = patch.prototype.name
-      end
-      local amount = nil
-      if any_setting(patch.force.players, 'show-resource-amount') then
-        if patch.prototype.infinite_resource then
-          amount = math.floor(patch.amount
-              / #patch.bbs
-              / patch.prototype.normal_resource_amount
-              * 100) .. '%'
-        else
-          amount = util.format_number(patch.amount, true)
-        end
-      end
-      if name ~= nil then
-        if amount ~= nil then
-          tag.text = patch.prototype.name .. ' ' .. amount
-        else
-          tag.text = name
-        end
-      elseif amount ~= nil then
-        tag.text = amount
-      end
-
-      if tag.icon ~= nil or tag.text ~= nil then
-        local existing_tag_area = {
-          left_top = {
-            x = math.floor(tag.position.x),
-            y = math.floor(tag.position.y),
-          },
-          right_bottom = {
-            x = math.floor(tag.position.x) + 1,
-            y = math.floor(tag.position.y) + 1,
-          },
-        }
-        local existing_tags = patch.force.find_chart_tags(
-          patch.surface,
-          existing_tag_area)
-        for _, existing_tag in pairs(existing_tags) do
-          existing_tag.destroy()
-        end
-        patch.tag = patch.force.add_chart_tag(patch.surface, tag)
+      local tag = create_tag(patch)
+      if tag ~= nil then
         patch.hidden = false
       end
+    end
+  end)
+end
+
+local function update_tag_text(opts)
+  opts = opts or {}
+  patches_for_each(opts.force, function(patch)
+    -- don't update hidden patches
+    -- or ones with the wrong resource
+    if not patch.hidden and
+      (opts.resource_name == nil or patch.prototype.name == opts.resource_name)
+    then
+      create_tag(patch)
     end
   end)
 end
@@ -555,9 +613,13 @@ end
 script.on_init(function()
   patches_new()
   chunks_new()
+  translations_new()
 end)
 
 script.on_configuration_changed(function()
+  -- clear translations since prototypes may have changed
+  translations_new()
+  -- re-create all tags
   tag_all({ announce = true })
 end)
 
@@ -567,6 +629,32 @@ script.on_event(defines.events.on_chunk_charted, function(event)
     force = event.force,
     surface = game.surfaces[event.surface_index],
   })
+end)
+
+script.on_event(defines.events.on_string_translated, function(event)
+  local translations = global.translations
+
+  if event.translated then
+    -- find a pending translation request
+    for resource_name, translation in pairs(translations) do
+      -- must be same player and localised_string
+      -- must be a different result than already stored (possibly nil)
+      if translation.player.index == event.player_index and
+        translation.result ~= event.result and
+        table.compare(translation.localised_string, event.localised_string)
+      then
+        -- set the result
+        translation.result = event.result
+        -- update tags for this resource only
+        -- updates for everyone on the force
+        update_tag_text({
+          resource_name = resource_name,
+          force = translation.player.force,
+        })
+        break
+      end
+    end
+  end
 end)
 
 local PROCESS_FREQUENCY = 1
