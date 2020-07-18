@@ -515,6 +515,8 @@ local function clear_tags(opts)
 end
 
 local function tag_all(opts)
+  -- TODO: handle if already processing
+  -- TODO: announce when finished
   opts = opts or {}
   clear_tags({ force = opts.force })
   local forces = {}
@@ -544,6 +546,7 @@ local function tag_all(opts)
 end
 
 script.on_init(function()
+  -- FIXME: tags are duped across save-load?
   patches_new()
   chunks_new()
 end)
