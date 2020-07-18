@@ -423,6 +423,7 @@ local function hide_tags(opts)
     end
   end
   patches_for_each(opts.force, function(patch)
+    patch.hidden = true
     patch_destroy_tag(patch)
   end)
 end
@@ -442,14 +443,14 @@ local function show_tags(opts)
   end
   patches_for_each(opts.force, function(patch)
     local add = false
-    if patch.tag == nil then
+    if patch.hidden then
+      add = opts.recreate_invalid
+    elseif patch.tag == nil then
+      add = true
+    elseif opts.recreate_invalid and not patch.tag.valid then
       add = true
     else
-      if opts.recreate_invalid and not patch.tag.valid then
-        add = true
-      else
-        add = false
-      end
+      add = false
     end
     if add then
       local tag = {}
@@ -499,6 +500,7 @@ local function show_tags(opts)
           existing_tag.destroy()
         end
         patch.tag = patch.force.add_chart_tag(patch.surface, tag)
+        patch.hidden = false
       end
     end
   end)
