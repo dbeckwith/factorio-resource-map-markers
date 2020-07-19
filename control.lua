@@ -97,19 +97,6 @@ local function chunk_area(chunk)
   }
 end
 
-local function bb_quantize(bb)
-  return {
-    left_top = {
-      x = math.floor(bb.left_top.x),
-      y = math.floor(bb.left_top.y),
-    },
-    right_bottom = {
-      x = math.ceil(bb.right_bottom.x),
-      y = math.ceil(bb.right_bottom.y),
-    },
-  }
-end
-
 local function bb_chunk(bb)
   return {
     left_top = {
@@ -119,19 +106,6 @@ local function bb_chunk(bb)
     right_bottom = {
       x = math.floor(bb.right_bottom.x / 32),
       y = math.floor(bb.right_bottom.y / 32),
-    },
-  }
-end
-
-local function bb_expand(bb, r)
-  return {
-    left_top = {
-      x = bb.left_top.x - r,
-      y = bb.left_top.y - r,
-    },
-    right_bottom = {
-      x = bb.right_bottom.x + r,
-      y = bb.right_bottom.y + r,
     },
   }
 end
@@ -149,24 +123,11 @@ local function patch_adjacent(patch, bb)
   -- in vanilla is 3 for normal resources, 12 for oil
   local r = 3
 
-  bb = bb_expand(bb_quantize(bb), r)
-
-  local function adjacent(bb2)
-    -- manually inlined: bb2 = bb_expand(bb_quantize(bb2), r)
-    return
-      bb.left_top    .x <= math.floor(bb2.right_bottom.x) + r and
-      bb.right_bottom.x >= math.floor(bb2.left_top    .x) - r and
-      bb.left_top    .y <= math.ceil (bb2.right_bottom.y) + r and
-      bb.right_bottom.y >= math.ceil (bb2.left_top    .y) - r
-  end
-
-  -- quick check: the bb must at least be adjacent to
-  -- the patch's surrounding bb
-  if not adjacent(patch.bb) then
-    return false
-  end
-
-  return true
+  return
+    math.floor(bb.left_top    .x) - r <= math.floor(patch.bb.right_bottom.x) + r and
+    math.floor(bb.right_bottom.x) + r >= math.floor(patch.bb.left_top    .x) - r and
+    math.ceil (bb.left_top    .y) - r <= math.ceil (patch.bb.right_bottom.y) + r and
+    math.ceil (bb.right_bottom.y) + r >= math.ceil (patch.bb.left_top    .y) - r
 end
 
 local function patches_new()
