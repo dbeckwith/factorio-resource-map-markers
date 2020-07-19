@@ -240,13 +240,12 @@ local function patches_remove_adjacent(force, surface, prototype, bb, for_each)
         local patches_for_xy = patches_for_x[y]
         if patches_for_xy ~= nil then
           for _, patch in pairs(patches_for_xy) do
-            if patches_set[patch.id] ~= nil then
-              if patch.prototype == prototype and
-                patch_adjacent(patch, bb, false)
-              then
-                for_each(patch)
-                patches_set[patch.id] = nil
-              end
+            if patches_set[patch.id] ~= nil and
+              patch.prototype == prototype and
+              patch_adjacent(patch, bb, false)
+            then
+              for_each(patch)
+              patches_set[patch.id] = nil
             end
             if patches_set[patch.id] == nil then
               patches_for_xy[patch.id] = nil
