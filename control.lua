@@ -1,6 +1,48 @@
 local math2d = require('math2d')
 local util = require('util')
 
+local profiles = {}
+
+local function profilehook()
+  local f = debug.getinfo(2, 'f').func
+  local profile = profiles[f]
+  if profile == nil then
+    profiles[f] = {
+      count = 1,
+      name = debug.getinfo(2, 'Sn')
+    }
+  else
+    profile.count = profile.count + 1
+  end
+end
+
+local function startprofile()
+  profiles = {}
+  debug.sethook(profilehook, 'c')
+end
+
+local function endprofile()
+  debug.sethook()
+
+  local function getname(name)
+    if name.what == 'C' then
+      return name.name
+    end
+    local loc = string.format('[%s]:%s', name.short_src, name.linedefined)
+    if name.namewhat ~= '' then
+      return string.format('%s (%s)', loc, name.name)
+    else
+      return loc
+    end
+  end
+
+  local out = ''
+  for _, profile in pairs(profiles) do
+    out = out .. string.format('%s,%s\n', getname(profile.name), profile.count)
+  end
+  log(out)
+end
+
 local function get_or_set(t, k, init)
   local v = t[k]
   if v == nil then
@@ -744,6 +786,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
   end
 
   if announce_finish_processing ~= nil and chunks_processed_this_tick > 0 and chunks_empty() then
+    endprofile()
     for _, player in ipairs(announce_finish_processing) do
       player.print({'command.resource-map-markers.mark-finished-notice'})
     end
@@ -760,6 +803,7 @@ commands.add_command(
     if #args == 0 then
       player.print({'command.resource-map-markers.help'})
     elseif args[1] == 'mark' then
+      startprofile()
       tag_all({ force = player.force, announce = true })
     elseif args[1] == 'clear' then
       clear_tags({ force = player.force, announce = true })
