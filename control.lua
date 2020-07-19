@@ -173,25 +173,25 @@ local function patch_adjacent(patch, bb, exact)
 
   bb = bb_expand(bb_quantize(bb), r)
 
-  local function adjacent(bb1, bb2)
-    bb2 = bb_quantize(bb2)
+  local function adjacent(bb2)
+    -- manually inlined: bb2 = bb_expand(bb_quantize(bb2), r)
     return
-      bb1.left_top.x <= bb2.right_bottom.x and
-      bb1.right_bottom.x >= bb2.left_top.x and
-      bb1.left_top.y <= bb2.right_bottom.y and
-      bb1.right_bottom.y >= bb2.left_top.y
+      bb.left_top    .x <= math.floor(bb2.right_bottom.x) + r and
+      bb.right_bottom.x >= math.floor(bb2.left_top    .x) - r and
+      bb.left_top    .y <= math.ceil (bb2.right_bottom.y) + r and
+      bb.right_bottom.y >= math.ceil (bb2.left_top    .y) - r
   end
 
   -- quick check: the bb must at least be adjacent to
   -- the patch's surrounding bb
-  if not adjacent(bb, patch.bb) then
+  if not adjacent(patch.bb) then
     return false
   end
 
   if exact then
     -- slow check: the bb must be adjacent to any of the bbs in the patch
     for _, patch_bb in dll_iter(patch.bbs) do
-      if adjacent(bb, patch_bb) then
+      if adjacent(patch_bb) then
         return true
       end
     end
