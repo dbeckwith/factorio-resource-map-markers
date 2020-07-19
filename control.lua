@@ -18,15 +18,38 @@ local function list_remove_if(t, f)
   end
 end
 
-local function list_concat(l1, l2)
-  local l1_len = #l1
-  if l1_len == 0 then
-    return l2
-  else
-    for i = 1,#l2 do
-      l1[l1_len + i] = l2[i]
+local function dll_unit(data)
+  local node = {
+    data = data,
+  }
+  return {
+    len = 1,
+    head = node,
+    tail = node,
+  }
+end
+
+local function dll_len(dll)
+  return dll.len
+end
+
+local function dll_concat(dll1, dll2)
+  dll1.len = dll1.len + dll2.len
+  dll1.tail.next = dll2.head
+  dll2.head.prev = dll1.tail
+  dll1.tail = dll2.tail
+end
+
+local function dll_iter(dll)
+  local i = 0
+  local next_node = dll.head
+  return function()
+    if next_node ~= nil then
+      i = i + 1
+      local curr_node = next_node
+      next_node = curr_node.next
+      return i, curr_node.data
     end
-    return l1
   end
 end
 
@@ -126,12 +149,12 @@ end
 
 local function bbs_center(bbs)
     local center = { x = 0, y = 0 }
-    for _, bb in pairs(bbs) do
+    for _, bb in dll_iter(bbs) do
       center.x = center.x + (bb.left_top.x + bb.right_bottom.x) / 2
       center.y = center.y + (bb.left_top.y + bb.right_bottom.y) / 2
     end
-    center.x = center.x / #bbs
-    center.y = center.y / #bbs
+    center.x = center.x / dll_len(bbs)
+    center.y = center.y / dll_len(bbs)
     return center
 end
 
@@ -167,7 +190,7 @@ local function patch_adjacent(patch, bb, exact)
 
   if exact then
     -- slow check: the bb must be adjacent to any of the bbs in the patch
-    for _, patch_bb in pairs(patch.bbs) do
+    for _, patch_bb in dll_iter(patch.bbs) do
       if adjacent(bb, patch_bb) then
         return true
       end
@@ -467,7 +490,7 @@ local function create_tag(patch)
   if any_setting(patch.force.players, 'show-resource-amount') then
     if patch.prototype.infinite_resource then
       amount = math.floor(patch.amount
-          / #patch.bbs
+          / dll_len(patch.bbs)
           / patch.prototype.normal_resource_amount
           * 100) .. '%'
     else
@@ -689,7 +712,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
         local merged_patch = {
           id = global.next_patch_id,
           prototype = resource_entity.prototype,
-          bbs = {resource_entity.bounding_box},
+          bbs = dll_unit(resource_entity.bounding_box),
           bb = resource_entity.bounding_box,
           amount = resource_entity.amount,
           force = chunk.force,
@@ -702,7 +725,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
           resource_entity.prototype,
           resource_entity.bounding_box,
           function(patch)
-            merged_patch.bbs = list_concat(merged_patch.bbs, patch.bbs)
+            dll_concat(merged_patch.bbs, patch.bbs)
             merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
             merged_patch.amount = merged_patch.amount + patch.amount
 
