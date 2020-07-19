@@ -18,38 +18,28 @@ local function list_remove_if(t, f)
   end
 end
 
-local function ll_unit(data)
-  local node = {
-    data = data,
-  }
+local function patch_bbs_new(bb)
   return {
-    len = 1,
-    head = node,
-    tail = node,
+    count = 1,
+    center = {
+      x = (bb.left_top.x + bb.right_bottom.x) / 2,
+      y = (bb.left_top.y + bb.right_bottom.y) / 2,
+    }
   }
 end
 
-local function ll_len(ll)
-  return ll.len
+local function patch_bbs_len(bbs)
+  return bbs.count
 end
 
-local function ll_concat(ll1, ll2)
-  ll1.len = ll1.len + ll2.len
-  ll1.tail.next = ll2.head
-  ll1.tail = ll2.tail
+local function patch_bbs_center(bbs)
+  return bbs.center
 end
 
-local function ll_iter(ll)
-  local i = 0
-  local next_node = ll.head
-  return function()
-    if next_node ~= nil then
-      i = i + 1
-      local curr_node = next_node
-      next_node = curr_node.next
-      return i, curr_node.data
-    end
-  end
+local function patch_bbs_concat(bbs1, bbs2)
+  bbs1.center.x = (bbs1.center.x * bbs1.count + bbs2.center.x * bbs2.count) / (bbs1.count + bbs2.count)
+  bbs1.center.y = (bbs1.center.y * bbs1.count + bbs2.center.y * bbs2.count) / (bbs1.count + bbs2.count)
+  bbs1.count = bbs1.count + bbs2.count
 end
 
 local function merge_bbs(bb1, bb2)
@@ -146,17 +136,6 @@ local function bb_expand(bb, r)
   }
 end
 
-local function bbs_center(bbs)
-    local center = { x = 0, y = 0 }
-    for _, bb in ll_iter(bbs) do
-      center.x = center.x + (bb.left_top.x + bb.right_bottom.x) / 2
-      center.y = center.y + (bb.left_top.y + bb.right_bottom.y) / 2
-    end
-    center.x = center.x / ll_len(bbs)
-    center.y = center.y / ll_len(bbs)
-    return center
-end
-
 local function patch_destroy_tag(patch)
   if patch.tag ~= nil and patch.tag.valid then
     patch.tag.destroy()
@@ -164,7 +143,7 @@ local function patch_destroy_tag(patch)
   patch.tag = nil
 end
 
-local function patch_adjacent(patch, bb, exact)
+local function patch_adjacent(patch, bb)
   -- TODO: use patch.prototype.resource_patch_search_radius once implemented
   -- https://forums.factorio.com/viewtopic.php?f=28&t=84405
   -- in vanilla is 3 for normal resources, 12 for oil
@@ -187,17 +166,7 @@ local function patch_adjacent(patch, bb, exact)
     return false
   end
 
-  if exact then
-    -- slow check: the bb must be adjacent to any of the bbs in the patch
-    for _, patch_bb in ll_iter(patch.bbs) do
-      if adjacent(patch_bb) then
-        return true
-      end
-    end
-    return false
-  else
-    return true
-  end
+  return true
 end
 
 local function patches_new()
@@ -264,7 +233,7 @@ local function patches_remove_adjacent(force, surface, prototype, bb, for_each)
           for _, patch in pairs(patches_for_xy) do
             if patches_set[patch.id] ~= nil and
               patch.prototype == prototype and
-              patch_adjacent(patch, bb, false)
+              patch_adjacent(patch, bb)
             then
               for_each(patch)
               patches_set[patch.id] = nil
@@ -297,7 +266,7 @@ local function patches_any_adjacent_chunk(chunk)
         if patches_for_xy ~= nil then
           for _, patch in pairs(patches_for_xy) do
             if patches_already_processed[patch.id] == nil then
-              if patch_adjacent(patch, bb, false) then
+              if patch_adjacent(patch, bb) then
                 return true
               end
             else
@@ -449,7 +418,7 @@ end
 
 local function create_tag(patch)
   local tag = {}
-  tag.position = bbs_center(patch.bbs)
+  tag.position = patch_bbs_center(patch.bbs)
   tag.icon = get_resource_icon(patch.prototype)
 
   local name = nil
@@ -489,7 +458,7 @@ local function create_tag(patch)
   if any_setting(patch.force.players, 'show-resource-amount') then
     if patch.prototype.infinite_resource then
       amount = math.floor(patch.amount
-          / ll_len(patch.bbs)
+          / patch_bbs_len(patch.bbs)
           / patch.prototype.normal_resource_amount
           * 100) .. '%'
     else
@@ -713,7 +682,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
         local merged_patch = {
           id = global.next_patch_id,
           prototype = resource_entity.prototype,
-          bbs = ll_unit(resource_entity.bounding_box),
+          bbs = patch_bbs_new(resource_entity.bounding_box),
           bb = resource_entity.bounding_box,
           amount = resource_entity.amount,
           force = chunk.force,
@@ -726,7 +695,7 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
           resource_entity.prototype,
           resource_entity.bounding_box,
           function(patch)
-            ll_concat(merged_patch.bbs, patch.bbs)
+            patch_bbs_concat(merged_patch.bbs, patch.bbs)
             merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
             merged_patch.amount = merged_patch.amount + patch.amount
 
