@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.3.1
+Date: 2020-07-19
+  Changes:
+    - Performance and memory usage improvements, most noticable on maps with very large resource patches.
+    - Oil-like resource patches are combined more correctly. May not work perfectly for modded resources.
+---------------------------------------------------------------------------------------------------
 Version: 0.3.0
 Date: 2020-07-18
   Changes:
