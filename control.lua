@@ -19,11 +19,12 @@ local function list_remove_if(t, f)
 end
 
 local function list_concat(l1, l2)
-  if #l1 == 0 then
+  local l1_len = #l1
+  if l1_len == 0 then
     return l2
   else
-    for _, bb in ipairs(l2) do
-      table.insert(l1, bb)
+    for i = 1,#l2 do
+      l1[l1_len + i] = l2[i]
     end
     return l1
   end
