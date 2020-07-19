@@ -657,8 +657,6 @@ local PROCESS_FREQUENCY = 1
 local PROCESS_CHUNK_BATCH = 1000
 local PROCESS_ENTITY_BATCH = 256
 
--- TODO: forget patches in chunks not along border, will never be needed
-
 script.on_nth_tick(PROCESS_FREQUENCY, function()
   local chunks_processed_this_tick = 0
   local entities_processed_this_tick = 0
