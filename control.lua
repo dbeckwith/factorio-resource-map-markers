@@ -42,15 +42,6 @@ local function endprofile()
   log(out)
 end
 
-local function get_or_set(t, k, init)
-  local v = t[k]
-  if v == nil then
-    v = init
-    t[k] = v
-  end
-  return v
-end
-
 local function list_reverse_pairs(t)
   local i = #t + 1
   return function()
@@ -235,18 +226,39 @@ end
 
 local function patches_add(patch)
   local patches = global.patches
-  patches = get_or_set(patches, patch.force.name, {})
-  patches = get_or_set(patches, patch.surface.name, {})
 
-  local patches_set = get_or_set(patches, 'set', {})
+  if patches[patch.force.name] == nil then
+    patches[patch.force.name] = {}
+  end
+  patches = patches[patch.force.name]
+
+  if patches[patch.surface.name] == nil then
+    patches[patch.surface.name] = {}
+  end
+  patches = patches[patch.surface.name]
+
+  if patches.set == nil then
+    patches.set = {}
+  end
+  local patches_set = patches.set
   patches_set[patch.id] = patch
 
-  local patches_chunks = get_or_set(patches, 'chunks', {})
+  if patches.chunks == nil then
+    patches.chunks = {}
+  end
+  local patches_chunks = patches.chunks
+
   local chunk_bb = bb_chunk(patch.bb)
   for x = chunk_bb.left_top.x,chunk_bb.right_bottom.x do
-    local patches_for_x = get_or_set(patches_chunks, x, {})
+    if patches_chunks[x] == nil then
+      patches_chunks[x] = {}
+    end
+    local patches_for_x = patches_chunks[x]
     for y = chunk_bb.left_top.y,chunk_bb.right_bottom.y do
-      local patches_for_xy = get_or_set(patches_for_x, y, {})
+      if patches_for_x[y] == nil then
+        patches_for_x[y] = {}
+      end
+      local patches_for_xy = patches_for_x[y]
       patches_for_xy[patch.id] = patch
     end
   end
