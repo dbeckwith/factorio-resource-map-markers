@@ -1,4 +1,3 @@
-local math2d = require('math2d')
 local util = require('util')
 
 local profiles = {}
@@ -136,13 +135,6 @@ local function chunk_area(chunk)
   }
 end
 
-local function bb_center(bb)
-  return {
-    x = (bb.left_top.x + bb.right_bottom.x) / 2,
-    y = (bb.left_top.y + bb.right_bottom.y) / 2,
-  }
-end
-
 local function bb_quantize(bb)
   return {
     left_top = {
@@ -185,9 +177,8 @@ end
 local function bbs_center(bbs)
     local center = { x = 0, y = 0 }
     for _, bb in pairs(bbs) do
-      local c = math2d.bounding_box.get_centre(bb)
-      center.x = center.x + c.x
-      center.y = center.y + c.y
+      center.x = center.x + (bb.left_top.x + bb.right_bottom.x) / 2
+      center.y = center.y + (bb.left_top.y + bb.right_bottom.y) / 2
     end
     center.x = center.x / #bbs
     center.y = center.y / #bbs
