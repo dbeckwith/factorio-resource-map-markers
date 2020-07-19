@@ -122,6 +122,12 @@ local function patch_adjacent(patch, bb)
   -- https://forums.factorio.com/viewtopic.php?f=28&t=84405
   -- in vanilla is 3 for normal resources, 12 for oil
   local r = 3
+  -- shitty heuristic to separate ore-like resources from oil-like resources
+  if bb.right_bottom.x - bb.left_top.x > 1 or
+    bb.right_bottom.y - bb.left_top.y > 1
+  then
+    r = 12
+  end
 
   return
     math.floor(bb.left_top    .x) - r <= math.floor(patch.bb.right_bottom.x) + r and
