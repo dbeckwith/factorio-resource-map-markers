@@ -321,6 +321,8 @@ local function chunks_new()
     searched = {},
     head = nil,
   }
+  global.entity_queue = {}
+  global.current_chunk = nil
 end
 
 local function chunks_empty()
@@ -661,30 +663,27 @@ script.on_event(defines.events.on_string_translated, function(event)
 end)
 
 local PROCESS_FREQUENCY = 1
-local PROCESS_TOTAL_BATCH = 100
-local PROCESS_NONEMPTY_BATCH = 1
+local PROCESS_CHUNK_BATCH = 1000
+local PROCESS_ENTITY_BATCH = 64
 
 script.on_nth_tick(PROCESS_FREQUENCY, function()
   local chunks_processed_this_tick = 0
-  local nonempty_chunks_processed_this_tick = 0
-  while not chunks_empty() and
-    chunks_processed_this_tick < PROCESS_TOTAL_BATCH and
-    nonempty_chunks_processed_this_tick < PROCESS_NONEMPTY_BATCH
+  local entities_processed_this_tick = 0
+  while (not chunks_empty() or #global.entity_queue > 0) and
+    chunks_processed_this_tick < PROCESS_CHUNK_BATCH and
+    entities_processed_this_tick < PROCESS_ENTITY_BATCH
   do
-    -- get next chunk to process
-    local chunk = chunks_next()
-    chunks_processed_this_tick = chunks_processed_this_tick + 1
+    if #global.entity_queue > 0 then
+      -- process entities from the current chunk
+      local chunk = global.current_chunk
 
-    -- find all resources in chunk
-    local resource_entities = chunk.surface.find_entities_filtered{
-      area = chunk_area(chunk),
-      type = 'resource',
-    }
+      local entities_to_process = math.min(#global.entity_queue, PROCESS_ENTITY_BATCH - entities_processed_this_tick)
+      entities_processed_this_tick = entities_processed_this_tick + entities_to_process
+      for idx = #global.entity_queue-entities_to_process+1,#global.entity_queue do
+        -- pop an entity from the queue
+        local resource_entity = global.entity_queue[idx]
+        global.entity_queue[idx] = nil
 
-    if #resource_entities ~= 0 then
-      nonempty_chunks_processed_this_tick = nonempty_chunks_processed_this_tick + 1
-
-      for _, resource_entity in ipairs(resource_entities) do
         -- find and remove all patches the current entity is adjacent to
         -- and merge them into one
         local merged_patch = {
@@ -719,34 +718,57 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
         patches_add(merged_patch)
       end
 
-      -- find any neighboring chunks that have patches up against them
-      -- and make sure they get searched as well
-      for neighbor_chunk in cardinal_neighbors(chunk.position) do
-        neighbor_chunk = {
-          position = neighbor_chunk,
-          force = chunk.force,
-          surface = chunk.surface,
-        }
-        -- only look at charted chunks that haven't been visited yet
-        if neighbor_chunk.force.is_chunk_charted(
-            neighbor_chunk.surface,
-            neighbor_chunk.position) and
-          not chunks_contains(neighbor_chunk)
-        then
-          -- see if any patches are adjacent to the neighboring chunk
-          if patches_any_adjacent_chunk(neighbor_chunk) then
-            chunks_add(neighbor_chunk)
+      if #global.entity_queue == 0 then
+        -- finished processing this chunk
+        -- find any neighboring chunks that have patches up against them
+        -- and make sure they get searched as well
+        for neighbor_chunk in cardinal_neighbors(chunk.position) do
+          neighbor_chunk = {
+            position = neighbor_chunk,
+            force = chunk.force,
+            surface = chunk.surface,
+          }
+          -- only look at charted chunks that haven't been visited yet
+          if neighbor_chunk.force.is_chunk_charted(
+              neighbor_chunk.surface,
+              neighbor_chunk.position) and
+            not chunks_contains(neighbor_chunk)
+          then
+            -- see if any patches are adjacent to the neighboring chunk
+            if patches_any_adjacent_chunk(neighbor_chunk) then
+              chunks_add(neighbor_chunk)
+            end
           end
         end
+
+        global.current_chunk = nil
+      end
+    else
+      -- get next chunk to process
+      local chunk = chunks_next()
+      chunks_processed_this_tick = chunks_processed_this_tick + 1
+
+      -- find all resources in chunk
+      local resource_entities = chunk.surface.find_entities_filtered{
+        area = chunk_area(chunk),
+        type = 'resource',
+      }
+
+      if #resource_entities > 0 then
+        global.current_chunk = chunk
+        global.entity_queue = resource_entities
       end
     end
   end
 
-  if nonempty_chunks_processed_this_tick > 0 then
+  if entities_processed_this_tick > 0 then
     show_tags()
   end
 
-  if announce_finish_processing ~= nil and chunks_processed_this_tick > 0 and chunks_empty() then
+  if announce_finish_processing ~= nil and
+    chunks_empty() and
+    #global.entity_queue == 0
+  then
     for _, player in ipairs(announce_finish_processing) do
       player.print({'command.resource-map-markers.mark-finished-notice'})
     end
