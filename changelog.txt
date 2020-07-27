@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.3.2
+Date: 2020-07-27
+  Changes:
+    - Re-marking resources will remember tags you have deleted manually.
+      - Tags deleted manually before this update will not be remembered.
+      - The `show` command will un-hide tags you delete manually.
+---------------------------------------------------------------------------------------------------
 Version: 0.3.1
 Date: 2020-07-19
   Changes:

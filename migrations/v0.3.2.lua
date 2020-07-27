@@ -1,0 +1,1 @@
+global.hidden_tags = {}

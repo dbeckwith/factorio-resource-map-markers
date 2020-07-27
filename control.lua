@@ -267,10 +267,11 @@ local function patches_for_each(force, for_each)
 end
 
 local function chunk_key(chunk)
-  return chunk.force.name .. ':' ..
-    chunk.surface.name .. ':' ..
-    chunk.position.x .. ':' ..
-    chunk.position.y
+  return string.format('%s:%s:%d:%d',
+    chunk.force.name,
+    chunk.surface.name,
+    chunk.position.x,
+    chunk.position.y)
 end
 
 local function chunks_new()
@@ -378,7 +379,9 @@ local function hide_tags(opts)
     end
   end
   patches_for_each(opts.force, function(patch)
-    patch.hidden = true
+    if opts.permanent then
+      hide_tag(patch.force, patch.surface, patch_bbs_center(patch.bbs))
+    end
     patch_destroy_tag(patch)
   end)
 end
@@ -482,9 +485,16 @@ local function show_tags(opts)
       player.print({'command.resource-map-markers.show-notice'})
     end
   end
+  if opts.recreate_invalid then
+    if opts.force ~= nil then
+      global.hidden_tags[opts.force] = nil
+    else
+      global.hidden_tags = {}
+    end
+  end
   patches_for_each(opts.force, function(patch)
     local add = false
-    if patch.hidden then
+    if tag_hidden(patch.force, patch.surface, patch_bbs_center(patch.bbs)) then
       add = opts.recreate_invalid
     elseif patch.tag == nil then
       add = true
@@ -494,10 +504,7 @@ local function show_tags(opts)
       add = false
     end
     if add then
-      local tag = create_tag(patch)
-      if tag ~= nil then
-        patch.hidden = false
-      end
+      create_tag(patch)
     end
   end)
 end
@@ -507,7 +514,7 @@ local function update_tag_text(opts)
   patches_for_each(opts.force, function(patch)
     -- don't update hidden patches
     -- or ones with the wrong resource
-    if not patch.hidden and
+    if not tag_hidden(patch.force, patch.surface, patch_bbs_center(patch.bbs)) and
       (opts.resource_name == nil or patch.prototype.name == opts.resource_name)
     then
       create_tag(patch)
@@ -573,7 +580,43 @@ local function tag_all(opts)
   end
 end
 
+function tag_hidden(force, surface, position)
+  local hidden_tags = global.hidden_tags
+  hidden_tags = hidden_tags[force.name]
+  if hidden_tags == nil then return false end
+  hidden_tags = hidden_tags[surface.name]
+  if hidden_tags == nil then return false end
+  hidden_tags = hidden_tags[math.floor(position.x)]
+  if hidden_tags == nil then return false end
+  return hidden_tags[math.floor(position.y)] or false
+end
+
+function hide_tag(force, surface, position)
+  local hidden_tags = global.hidden_tags
+
+  local hidden_tags_for_force = hidden_tags[force.name]
+  if hidden_tags_for_force == nil then
+    hidden_tags_for_force = {}
+    hidden_tags[force.name] = hidden_tags_for_force
+  end
+
+  local hidden_tags_for_surface = hidden_tags_for_force[surface.name]
+  if hidden_tags_for_surface == nil then
+    hidden_tags_for_surface = {}
+    hidden_tags_for_force[surface.name] = hidden_tags_for_surface
+  end
+
+  local hidden_tags_for_x = hidden_tags_for_surface[math.floor(position.x)]
+  if hidden_tags_for_x == nil then
+    hidden_tags_for_x = {}
+    hidden_tags_for_surface[math.floor(position.x)] = hidden_tags_for_x
+  end
+
+  hidden_tags_for_x[math.floor(position.y)] = true
+end
+
 script.on_init(function()
+  global.hidden_tags = {}
   patches_new()
   chunks_new()
   translations_new()
@@ -617,6 +660,12 @@ script.on_event(defines.events.on_string_translated, function(event)
         break
       end
     end
+  end
+end)
+
+script.on_event(defines.events.on_chart_tag_removed, function(event)
+  if event.player_index ~= nil then
+    hide_tag(event.tag.force, event.tag.surface, event.tag.position)
   end
 end)
 
@@ -747,7 +796,7 @@ commands.add_command(
     elseif args[1] == 'clear' then
       clear_tags({ force = player.force, announce = true })
     elseif args[1] == 'hide' then
-      hide_tags({ force = player.force, announce = true })
+      hide_tags({ force = player.force, permanent = true, announce = true })
     elseif args[1] == 'show' then
       show_tags({ recreate_invalid = true, force = player.force, announce = true })
     elseif args[1] == 'mark-here' then
