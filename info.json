@@ -1,10 +1,10 @@
 {
   "name": "sonaxaton-resource-map-markers",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "title": "Resource Map Markers",
   "author": "sonaxaton",
   "homepage": "https://mods.factorio.com/mod/sonaxaton-resource-map-markers",
   "description": "Automatically mark resources on the map.",
-  "factorio_version": "0.18",
-  "dependencies": ["base >= 0.18"]
+  "factorio_version": "1.0",
+  "dependencies": []
 }
