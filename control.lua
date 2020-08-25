@@ -249,7 +249,15 @@ local function patches_any_adjacent_chunk(chunk)
 end
 
 local function patches_remove_force(force)
-  global.patches[force.name] = nil
+  local patches = global.patches
+  patches[force.name] = nil
+end
+
+local function patches_remove_surface(surface)
+  local patches = global.patches
+  for _, patches in pairs(patches) do
+    patches[surface.name] = nil
+  end
 end
 
 local function patches_for_each(force, for_each)
@@ -336,6 +344,46 @@ local function chunks_remove_force(force)
   for key, chunk in pairs(global.chunks.searched) do
     if chunk.force == force then
       global.chunks.searched[key] = nil
+    end
+  end
+end
+
+local function chunks_remove_surface(surface)
+  local prev_key = nil
+  local key = global.chunks.head
+  while key ~= nil do
+    local chunk = global.chunks.queue[key]
+    if chunk.surface == surface then
+      global.chunks.queue[key] = nil
+
+      if key == global.chunks.head then
+        global.chunks.head = chunk.next
+      else
+        global.chunks.queue[prev_key].next = chunk.next
+      end
+    else
+      prev_key = key
+    end
+    key = chunk.next
+  end
+  for key, chunk in pairs(global.chunks.searched) do
+    if chunk.surface == surface then
+      global.chunks.searched[key] = nil
+    end
+  end
+end
+
+local function chunks_rename_surface(surface)
+  for key, chunk in global.chunks.queue do
+    if chunk.surface == surface then
+      global.chunks.queue[key] = nil
+      global.chunks.queue[chunk_key(chunk)] = chunk
+    end
+  end
+  for key, chunk in global.chunks.searched do
+    if chunk.surface == surface then
+      global.chunks.searched[key] = nil
+      global.chunks.searched[chunk_key(chunk)] = chunk
     end
   end
 end
@@ -669,6 +717,51 @@ script.on_event(defines.events.on_chart_tag_removed, function(event)
   end
 end)
 
+script.on_event(defines.events.on_pre_surface_deleted, function(event)
+  local surface = game.surfaces[event.surface_index]
+  patches_remove_surface(surface)
+  local hidden_tags = global.hidden_tags
+  for _, hidden_tags in pairs(hidden_tags) do
+    hidden_tags[surface.name] = nil
+  end
+  chunks_remove_surface(surface)
+end)
+
+script.on_event(defines.events.on_pre_surface_cleared, function(event)
+  local surface = game.surfaces[event.surface_index]
+  patches_remove_surface(surface)
+  local hidden_tags = global.hidden_tags
+  for _, hidden_tags in pairs(hidden_tags) do
+    hidden_tags[surface.name] = nil
+  end
+  chunks_remove_surface(surface)
+end)
+
+script.on_event(defines.events.on_surface_renamed, function(event)
+  local old_surface_name = event.old_name
+  local new_surface_name = event.new_name
+  local patches = global.patches
+  for _, patches in pairs(patches) do
+    patches[new_surface_name] = patches[old_surface_name]
+    patches[old_surface_name] = nil
+  end
+  patches_rename_surface(surface)
+  local hidden_tags = global.hidden_tags
+  for _, hidden_tags in pairs(hidden_tags) do
+    hidden_tags[new_surface_name] = hidden_tags[old_surface_name]
+    hidden_tags[old_surface_name] = nil
+  end
+  chunks_rename_surface(surface)
+end)
+
+script.on_event(defines.events.on_forces_merging, function(event)
+  local force = event.source
+  patches_remove_force(force)
+  local hidden_tags = global.hidden_tags
+  hidden_tags[force.name] = nil
+  chunks_remove_force(force)
+end)
+
 local PROCESS_FREQUENCY = 1
 local PROCESS_CHUNK_BATCH = 1000
 local PROCESS_ENTITY_BATCH = 256
@@ -683,87 +776,100 @@ script.on_nth_tick(PROCESS_FREQUENCY, function()
     if #global.entity_queue > 0 then
       -- process entities from the current chunk
       local chunk = global.current_chunk
+      if chunk.surface.valid and chunk.force.valid then
+        local entities_to_process = math.min(#global.entity_queue, PROCESS_ENTITY_BATCH - entities_processed_this_tick)
+        entities_processed_this_tick = entities_processed_this_tick + entities_to_process
+        for idx = #global.entity_queue-entities_to_process+1,#global.entity_queue do
+          -- pop an entity from the queue
+          local resource_entity = global.entity_queue[idx]
+          global.entity_queue[idx] = nil
 
-      local entities_to_process = math.min(#global.entity_queue, PROCESS_ENTITY_BATCH - entities_processed_this_tick)
-      entities_processed_this_tick = entities_processed_this_tick + entities_to_process
-      for idx = #global.entity_queue-entities_to_process+1,#global.entity_queue do
-        -- pop an entity from the queue
-        local resource_entity = global.entity_queue[idx]
-        global.entity_queue[idx] = nil
-
-        -- find and remove all patches the current entity is adjacent to
-        -- and merge them into one
-        local merged_patch = {
-          id = global.next_patch_id,
-          prototype = resource_entity.prototype,
-          bbs = patch_bbs_new(resource_entity.bounding_box),
-          bb = resource_entity.bounding_box,
-          amount = resource_entity.amount,
-          force = chunk.force,
-          surface = chunk.surface,
-        }
-        global.next_patch_id = global.next_patch_id + 1
-        patches_remove_adjacent(
-          chunk.force,
-          chunk.surface,
-          resource_entity.prototype,
-          resource_entity.bounding_box,
-          function(patch)
-            patch_bbs_concat(merged_patch.bbs, patch.bbs)
-            merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
-            merged_patch.amount = merged_patch.amount + patch.amount
-
-            -- don't need to bother with prototype, force, and surface
-            -- since they are the same
-
-            -- clear the tag of the existing patch if it had one
-            -- one will be created for the merged patch later
-            patch_destroy_tag(patch)
-          end)
-
-        -- record the merged patch
-        patches_add(merged_patch)
-      end
-
-      if #global.entity_queue == 0 then
-        -- finished processing this chunk
-        -- find any neighboring chunks that have patches up against them
-        -- and make sure they get searched as well
-        for neighbor_chunk in cardinal_neighbors(chunk.position) do
-          neighbor_chunk = {
-            position = neighbor_chunk,
-            force = chunk.force,
-            surface = chunk.surface,
-          }
-          -- only look at charted chunks that haven't been visited yet
-          if neighbor_chunk.force.is_chunk_charted(
-              neighbor_chunk.surface,
-              neighbor_chunk.position) and
-            not chunks_contains(neighbor_chunk)
+          if
+            resource_entity.valid and
+            resource_entity.surface.valid and
+            resource_entity.force.valid
           then
-            -- see if any patches are adjacent to the neighboring chunk
-            if patches_any_adjacent_chunk(neighbor_chunk) then
-              chunks_add(neighbor_chunk)
-            end
+            -- find and remove all patches the current entity is adjacent to
+            -- and merge them into one
+            local merged_patch = {
+              id = global.next_patch_id,
+              prototype = resource_entity.prototype,
+              bbs = patch_bbs_new(resource_entity.bounding_box),
+              bb = resource_entity.bounding_box,
+              amount = resource_entity.amount,
+              force = chunk.force,
+              surface = chunk.surface,
+            }
+            global.next_patch_id = global.next_patch_id + 1
+            patches_remove_adjacent(
+              chunk.force,
+              chunk.surface,
+              resource_entity.prototype,
+              resource_entity.bounding_box,
+              function(patch)
+                patch_bbs_concat(merged_patch.bbs, patch.bbs)
+                merged_patch.bb = merge_bbs(merged_patch.bb, patch.bb)
+                merged_patch.amount = merged_patch.amount + patch.amount
+
+                -- don't need to bother with prototype, force, and surface
+                -- since they are the same
+
+                -- clear the tag of the existing patch if it had one
+                -- one will be created for the merged patch later
+                patch_destroy_tag(patch)
+              end)
+
+            -- record the merged patch
+            patches_add(merged_patch)
           end
         end
 
+        if #global.entity_queue == 0 then
+          -- finished processing this chunk
+          -- find any neighboring chunks that have patches up against them
+          -- and make sure they get searched as well
+          for neighbor_chunk in cardinal_neighbors(chunk.position) do
+            neighbor_chunk = {
+              position = neighbor_chunk,
+              force = chunk.force,
+              surface = chunk.surface,
+            }
+            -- only look at charted chunks that haven't been visited yet
+            if neighbor_chunk.force.is_chunk_charted(
+                neighbor_chunk.surface,
+                neighbor_chunk.position) and
+              not chunks_contains(neighbor_chunk)
+            then
+              -- see if any patches are adjacent to the neighboring chunk
+              if patches_any_adjacent_chunk(neighbor_chunk) then
+                chunks_add(neighbor_chunk)
+              end
+            end
+          end
+
+          global.current_chunk = nil
+        end
+      else
+        -- chunk is bad
         global.current_chunk = nil
+        global.entity_queue = {}
       end
     else
       -- get next chunk to process
       local chunk = chunks_next()
       chunks_processed_this_tick = chunks_processed_this_tick + 1
 
-      -- find all resources in chunk
-      local resource_entities = chunk.surface.find_entities_filtered{
-        area = chunk_area(chunk),
-        type = 'resource',
-      }
+      if chunk.surface.valid and chunk.force.valid then
+        -- find all resources in chunk
+        local resource_entities = chunk.surface.find_entities_filtered{
+          area = chunk_area(chunk),
+          type = 'resource',
+        }
 
-      if #resource_entities > 0 then
-        global.current_chunk = chunk
-        global.entity_queue = resource_entities
+        if #resource_entities > 0 then
+          global.current_chunk = chunk
+          global.entity_queue = resource_entities
+        end
       end
     end
   end

@@ -1,4 +1,9 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.3.4
+Date: 2020-08-25
+  Minor Changes:
+    - Added better handling for surfaces and forces being removed/cleared/renamed. Should hopefully prevent bugs with Space Exploration.
+---------------------------------------------------------------------------------------------------
 Version: 0.3.3
 Date: 2020-08-14
   Minor Changes:
