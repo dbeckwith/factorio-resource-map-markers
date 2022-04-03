@@ -405,7 +405,7 @@ local function get_resource_icon(resource_prototype)
   if resource_prototype.mineable_properties == nil then
     return nil
   end
-  for _, product in ipairs(resource_prototype.mineable_properties.products) do
+  for _, product in ipairs(resource_prototype.mineable_properties.products or {}) do
     return {
       type = product.type,
       name = product.name,
